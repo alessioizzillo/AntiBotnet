@@ -4,6 +4,7 @@ import ctypes
 import pandas as pd
 import socket
 import struct
+import time
 from tqdm import tqdm
 
 
@@ -54,8 +55,7 @@ bpf_queue = bpf['queue']
 
 n = 0
 # Dataframe to store the captured packets
-Packets = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', \
-    'Destination Port', 'Protocol', 'Length', 'tcp_Flags'])
+Packets = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', 'EtherType', 'Protocol', 'TCP Flags', 'Length', 'TCP Payload Length', 'UDP Length', 'TTL'])
 
 while 1:
     pbar = tqdm(total=n_packets)
@@ -71,12 +71,13 @@ while 1:
         if (n == 0):
             start = k.timestamp
 
-        # Compute the timestamp in seconds and convert it in string with 9 decimal digits
-        ts = (k.timestamp-start)
+        # Compute the timestamp (in seconds) and add it to Unix epoch
+        ts = (k.timestamp-start)/1000000000+time.time()
 
         # Update the Dataframe of the captured packets
         Packets.loc[len(Packets)] = [ts, int2ip(k.src_ip), int2ip(k.dst_ip), k.src_port, \
-            k.dst_port, k.protocol, k.len, k.tcp_Flags]
+            k.dst_port, k.ethertype, k.protocol, k.tcp_Flags, k.len, k.tcp_payload_len, k.udp_len, k.ttl]
+
         n += 1
         pbar.update(1)
 

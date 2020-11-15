@@ -19,7 +19,7 @@ class BotnetDetection(Thread):
         bpf_hash_sospicious_IPs = self.bpf['sospicious_IPs']
         bpf_hash_sospicious_IPs.clear()
         for ip in sospicious_IPs:
-            bpf_hash_sospicious_IPs[ctypes.c_uint(ip2int(ip))] = ctypes.c_byte(0)
+            bpf_hash_sospicious_IPs[ctypes.c_uint(ip)] = ctypes.c_byte(0)
 
     def raise_exception(self): 
         thread_id = self.get_id() 

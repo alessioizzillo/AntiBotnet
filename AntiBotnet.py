@@ -2,12 +2,12 @@ from bcc import BPF
 import sys
 import ctypes
 import pandas as pd
+import time
 
 from utilities.network import *
 from utilities.task_queue import *
 from BotnetDetection import BotnetDetection
 
-print("Starting AntiBotnet...\n")
 
 if (len(sys.argv) == 3):
     # Interface on which capture packets
@@ -15,8 +15,10 @@ if (len(sys.argv) == 3):
     # Number of packets to analyze at a time
     n_packets = int(sys.argv[2])
 else:
-    print("\nUSAGE: sudo python3 loader_and_receiver.py <interface> <number of packets to capture>\n")
+    print("\nUSAGE: sudo python3 AntiBotnet.py <interface> <number of packets to capture>\n")
     sys.exit(-1)
+
+print("Starting AntiBotnet...\n")
 
 # Initialize BPF - load source code from 'ebpf/eBPF_program.c.'
 bpf = BPF(src_file="eBPF/eBPF_program.c", debug=0)
@@ -46,10 +48,10 @@ bpf_queue = bpf['queue']
 
 n = 0
 # Dataframe to store the captured packets
-Packets = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', \
-    'Destination Port', 'Protocol', 'Length', 'tcp_Flags'])
+Packets = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', \
+    'EtherType', 'Protocol', 'TCP Flags', 'Length', 'TCP Payload Length', 'UDP Length', 'TTL'])
 
-flowbased_dataset = pd.read_hdf("flow_based_detection/datasets/train/IoT-BoT.hdf5")
+flowbased_dataset = pd.read_hdf("flow_based_detection/training_dataset/training.hdf5")
 queue = TaskQueue()
 queue.start()
 
@@ -66,12 +68,13 @@ while 1:
         if (n == 0):
             start = k.timestamp
 
-        # Compute the timestamp in seconds and convert it in string with 9 decimal digits
-        ts = (k.timestamp-start)
+        # Compute the timestamp (in seconds) and add it to Unix epoch
+        ts = (k.timestamp-start)/1000000000+time.time()
 
         # Update the Dataframe of the captured packets
         Packets.loc[len(Packets)] = [ts, int2ip(k.src_ip), int2ip(k.dst_ip), k.src_port, \
-            k.dst_port, k.protocol, k.len, k.tcp_Flags]
+            k.dst_port, k.ethertype, k.protocol, k.tcp_Flags, k.len, k.tcp_payload_len, k.udp_len, k.ttl]
+
         n += 1
     
     # Start a thread to detect the normal and sospicious IPs present in captured traffic

@@ -9,4 +9,7 @@ def int2ip(addr):
 
 # Convert IP address from string (with dot-decimal notation) to integer 
 def ip2int(addr):
-    return struct.unpack("!I", socket.inet_aton(addr))[0]
+    try:
+        return struct.unpack("!I", socket.inet_aton(addr))[0]
+    except:
+        return float('nan')

@@ -31,7 +31,21 @@ class BotnetDetection(Thread):
         flow_results = FlowBasedDetection(self.captured_packets, self.flowbased_dataset)
         print()
 
+        lock = FileLock("shared_traffic/traffic.csv.lock")
+        with lock:
+            try:
+                df = pd.read_csv("shared_traffic/traffic.csv")
+                df = pd.concat([df, self.captured_packets], ignore_index=True)
+                df = df.sort_values(['Time'])
+                open("shared_traffic/traffic.csv", "w")
+            except:
+                df = self.captured_packets
+        
+        graph_results = GraphBasedDetection(df, self.graphbased_dataset)
+
+        print()
         print("Flow RESULTS \n", flow_results, "\n")
+        print("Graph RESULTS", graph_results, "\n")
         
         # bpf_hash_sospicious_IPs = self.bpf['sospicious_IPs']
         # bpf_hash_sospicious_IPs.clear()

@@ -12,103 +12,110 @@ from utilities.network import *
 warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
 
 
-def updateFlows(Flows, Packets, row, local_ip, mode, malicious_IPs_list):
-    SrcIP = row['Source'] if row['Source']<row['Destination'] else row['Destination']
-    SrcPort = row['Source Port'] if row['Source Port']<row['Destination Port'] else row['Destination Port']
-    DstIp = row['Destination'] if row['Source']<row['Destination'] else row['Source']
-    DstPort = row['Destination Port'] if row['Source Port']<row['Destination Port'] else row['Source Port']
-    Duration = Packets['Time'].max() - Packets['Time'].min()
-    PX = len(Packets.index)
-    NNP = Num_null_packets(Packets)
-    NSP = Num_small_packets(Packets)
+def updateFlows(Flows, Source, Source_Port, Destination, Destination_Port, Protocol, Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list):  
+    SrcIP = Source if Source<Destination else Destination
+    SrcPort = Source_Port if Source_Port<Destination_Port else Destination_Port
+    DstIp = Destination if Source<Destination else Source
+    DstPort = Destination_Port if Source_Port<Destination_Port else Source_Port
+    Duration = max(Time) - min(Time)
+    PX = len(Time)
+    NNP = Num_null_packets(Protocol, UDP_Length, TCP_Payload_Length)
+    NSP = Num_small_packets(Length)
     PSP = NSP/PX
-    if (len(Packets[Packets['Forward'] == 0]) != 0):
-        IOPR = len(Packets[Packets['Forward'] == 1])/len(Packets[Packets['Forward'] == 0])
+    if (Forward.count(0) != 0):
+        IOPR = Forward.count(1)/Forward.count(0)
     else:
         IOPR = -1
-    Reconnect = len(Packets[Packets['TCP Flags'] == 2]) - 1 
-    FPS = Packets.loc[0]['Length']
-    TBT = Packets['Length'].sum()
-    APL = Average_payload_len(Packets)
-    DPL = Num_different_packets_len(Packets)
-    PV = Stdv_payload(Packets)
+    Reconnect = TCP_Flags.count(2) - 1 
+    FPS = Length[0]
+    TBT = sum(Length)
+    APL = Average_payload_len(Protocol, UDP_Length, TCP_Payload_Length)
+    DPL = Num_different_packets_len(Length)
+    PV = Stdv_payload(Length)
     if Duration != float(0):
         BPS = TBT*8/Duration # ???
         PS = PX/Duration # ???
     else:
         BPS = -1
         PS = -1
-    AIT = Average_arrival_time(Packets)
-    MPL = Packets['Length'].max()
-    MP = len(Packets[Packets['Length'] == MPL])
+    AIT = Average_arrival_time(Time)
+    MPL = max(Length)
+    MP = Length.count(MPL)
 
-    if (mode == 'dataset'):
+    if (mode == 'training'):
         Label = 1 if SrcIP in malicious_IPs_list or DstIp in malicious_IPs_list else 0
-        Flows.loc[len(Flows)] = [SrcIP, SrcPort, DstIp, DstPort, Duration, PX, NNP, NSP, PSP, IOPR, Reconnect, FPS, TBT, APL, DPL, PV, BPS, PS, AIT, MPL, MP, Label]
+        Flows.append([SrcIP, SrcPort, DstIp, DstPort, Duration, PX, NNP, NSP, PSP, IOPR, Reconnect, FPS, TBT, APL, DPL, PV, BPS, PS, AIT, MPL, MP, Label])
     else:
-        Flows.loc[len(Flows)] = [SrcIP, SrcPort, DstIp, DstPort, Duration, PX, NNP, NSP, PSP, IOPR, Reconnect, FPS, TBT, APL, DPL, PV, BPS, PS, AIT, MPL, MP]
+        Flows.append([SrcIP, SrcPort, DstIp, DstPort, Duration, PX, NNP, NSP, PSP, IOPR, Reconnect, FPS, TBT, APL, DPL, PV, BPS, PS, AIT, MPL, MP])
 
 
-def Stdv_payload(packets):
+def Stdv_payload(Length):
     length_list = []
-    for index, row in packets.iterrows():
-        length_list.append(row['Length'])
+    for l in Length:
+        length_list.append(l)
     return numpy.std(length_list)
 
 
-def Num_different_packets_len(packets):
+def Num_different_packets_len(Length):
     length_list = []
-    for index, row in packets.iterrows():
-        if row['Length'] not in length_list:
-            length_list.append(row['Length'])
+    for l in Length:
+        if l not in length_list:
+            length_list.append(l)
     return len(length_list)
 
 
-def Average_payload_len(packets):
-    sum = 0
-    for index, row in packets.iterrows():
-        if row['Protocol'] == 17:
-            sum += row['UDP Length']-8
-        if row['Protocol'] == 6:
-            sum += row['TCP Payload Length']
+def Average_payload_len(Protocol, UDP_Length, TCP_Payload_Length):
+    s = 0
 
-    return sum/len(packets.index)
-
-
-def Num_small_packets(packets):
-    sum = 0
-    for index, row in packets.iterrows():
-        if row['Length'] >= 63 and row['Length'] <= 400:
-            sum += 1
-
-    return sum
+    if (Protocol == 6):
+        for ul in UDP_Length:
+            s += ul-8
+        
+        return s/len(UDP_Length)
+    else:
+        for tpl in TCP_Payload_Length:
+            s += tpl
+        
+        return s/len(TCP_Payload_Length)
 
 
-def Num_null_packets(packets):
-    sum = 0
-    for index, row in packets.iterrows():
-        if (row['Protocol'] == 17 and row['UDP Length']-8 == 0) or \
-            (row['Protocol'] == 6 and row['TCP Payload Length'] == 0):
-            sum += 1
-    return sum
+def Num_small_packets(Length):
+    s = 0
+    for l in Length:
+        if l >= 63 and l <= 400:
+            s += 1
+
+    return s
 
 
-def Average_arrival_time(packets):
+def Num_null_packets(Protocol, UDP_Length, TCP_Payload_Length):
+    s = 0
+    if (Protocol == 6):
+        for ul in UDP_Length:
+            if ul-8 == 0:
+                s += 1
+    else:
+        for tpl in TCP_Payload_Length:
+            if tpl == 0:
+                s += 1 
+
+    return s
+
+
+def Average_arrival_time(Time):
     prevT = None
     sum_int = 0
-    for index, row in packets.iterrows():
+    for i in range(len(Time)):
         if prevT == None:
-            prevT = row['Time']
+            prevT = Time[i]
             continue
+        sum_int += Time[i]-prevT
+        prevT = Time[i]
 
-        sum_int += row['Time']-prevT
-        prevT = row['Time']
-
-    if (len(packets) != 0):
-        iat_mean = sum_int/len(packets)
+    if (len(Time) != 0):
+        iat_mean = sum_int/len(Time)
     else:
         iat_mean = 0
-
 
     return iat_mean
 
@@ -120,45 +127,38 @@ def flow_id(x):
         return str(x['Destination'])+'-'+str(x['Source'])+'-'+str(x['Destination Port'])+'-'+str(x['Source Port'])+'-'+str(x['Protocol'])
 
 
-def convert_to_float(d, mode):
-    if (mode == 'dataset'):
-        d['Time'] = d['Time'].progress_apply(lambda x: float(x))
-        print("\'Time\' feature converted to float")
-        d['Source'] = d['Source'].progress_apply(lambda x: float(ip2int(str(x))))
-        print("\'Source\' feature converted to float")
-        d['Destination'] = d['Destination'].progress_apply(lambda x: float(ip2int(str(x))))
-        print("\'Destination\' feature converted to float")
-        d['Source Port'] = d['Source Port'].progress_apply(lambda x: float(x))
-        print("\'Source Port\' feature converted to float")
-        d['Destination Port'] = d['Destination Port'].progress_apply(lambda x: float(x))
-        print("\'Destination Port\' feature converted to float")
-        d['EtherType'] = d['EtherType'].progress_apply(lambda x: float(6) if str(x) == 'IPv4' else float(x) if str(x).isnumeric() else float('nan'))
-        print("\'EtherType\' feature converted to float")
-        d['Protocol'] = d['Protocol'].progress_apply(lambda x: float(6) if str(x) == 'TCP' else float(17) if str(x) == 'UDP' else float(x) if str(x).isnumeric() else float('nan'))
-        print("\'Protocol\' feature converted to float")
-        d['TCP Flags'] = d['TCP Flags'].progress_apply(lambda x: float(int(x, 16)) if 'x' in str(x) else float(x))
-        print("\'TCP Flags\' feature converted to float")
-        d['Length'] = d['Length'].progress_apply(lambda x: float(x))
-        print("\'Length\' feature converted to float")
-        d['TCP Payload Length'] = d['TCP Payload Length'].progress_apply(lambda x: float(x))
-        print("\'TCP Payload Length\' feature converted to float")
-        d['UDP Length'] = d['UDP Length'].progress_apply(lambda x: float(x))
-        print("\'UDP Length\' feature converted to float")
-        d['TTL'] = d['TTL'].progress_apply(lambda x: float(x) if str(x).isnumeric() else float('nan'))
-        print("\'TTL\' feature converted to float")
-    else:
-        d['Time'] = d['Time'].apply(lambda x: float(x))
-        d['Source'] = d['Source'].apply(lambda x: float(ip2int(str(x))))
-        d['Destination'] = d['Destination'].apply(lambda x: float(ip2int(str(x))))
-        d['Source Port'] = d['Source Port'].apply(lambda x: float(x))
-        d['Destination Port'] = d['Destination Port'].apply(lambda x: float(x))
-        d['EtherType'] = d['EtherType'].apply(lambda x: float(6) if str(x) == 'IPv4' else float(x) if str(x).isnumeric() else float('nan'))
-        d['Protocol'] = d['Protocol'].apply(lambda x: float(6) if str(x) == 'TCP' else float(17) if str(x) == 'UDP' else float(x) if str(x).isnumeric() else float('nan'))
-        d['TCP Flags'] = d['TCP Flags'].apply(lambda x: float(int(x, 16)) if 'x' in str(x) else float(x))
-        d['Length'] = d['Length'].apply(lambda x: float(x))
-        d['TCP Payload Length'] = d['TCP Payload Length'].apply(lambda x: float(x))
-        d['UDP Length'] = d['UDP Length'].apply(lambda x: float(x))
-        d['TTL'] = d['TTL'].apply(lambda x: float(x) if str(x).isnumeric() else float('nan'))
+def to_float_or_nan(x):
+    try:
+        return float(x)
+    except:
+        return float('nan')
+
+
+def convert_to_float(d):
+    d['Time'] = d['Time'].progress_apply(lambda x: float(x))
+    print("\'Time\' feature converted to float")
+    d['Source'] = d['Source'].progress_apply(lambda x: float(ip2int(x)) if isinstance(x, str) else float(x))
+    print("\'Source\' feature converted to float")
+    d['Destination'] = d['Destination'].progress_apply(lambda x: float(ip2int(x)) if isinstance(x, str) else float(x))
+    print("\'Destination\' feature converted to float")
+    d['Source Port'] = d['Source Port'].progress_apply(lambda x: float(x))
+    print("\'Source Port\' feature converted to float")
+    d['Destination Port'] = d['Destination Port'].progress_apply(lambda x: float(x))
+    print("\'Destination Port\' feature converted to float")
+    d['EtherType'] = d['EtherType'].progress_apply(lambda x: float(2048) if str(x) == 'IPv4' else float(x) if (isinstance(x, float) or isinstance(x, int)) else float('nan'))
+    print("\'EtherType\' feature converted to float")
+    d['Protocol'] = d['Protocol'].progress_apply(lambda x: float(6) if str(x) == 'TCP' else float(17) if str(x) == 'UDP' else float(x) if (isinstance(x, float) or isinstance(x, int)) else float('nan'))
+    print("\'Protocol\' feature converted to float")
+    d['TCP Flags'] = d['TCP Flags'].progress_apply(lambda x: float(int(x, 16)) if 'x' in str(x) else float(x))
+    print("\'TCP Flags\' feature converted to float")
+    d['Length'] = d['Length'].progress_apply(lambda x: float(x))
+    print("\'Length\' feature converted to float")
+    d['TCP Payload Length'] = d['TCP Payload Length'].progress_apply(lambda x: float(x))
+    print("\'TCP Payload Length\' feature converted to float")
+    d['UDP Length'] = d['UDP Length'].progress_apply(lambda x: float(x))
+    print("\'UDP Length\' feature converted to float")
+    d['TTL'] = d['TTL'].progress_apply(lambda x: to_float_or_nan(x))
+    print("\'TTL\' feature converted to float")
 
     return d
 
@@ -166,71 +166,131 @@ def convert_to_float(d, mode):
 
 def FlowFeaturesExtractor(captured_packets, mode, malicious_IPs_list):
     local_ip = socket.gethostbyname(socket.gethostname())
-    if (mode != 'dataset' and mode != 'traffic'):
+    if (mode != 'training' and mode != 'predicting'):
         return None
 
-    if mode == 'dataset':       
+    if mode == 'training':       
         tqdm.pandas()
 
     d = captured_packets
-    d = convert_to_float(d, mode)
-    d = d[d['Source'].notnull() & d['Destination'].notnull() & d['Source Port'].notnull() & d['Destination Port'].notnull() & d['EtherType'].notnull() & d['Protocol'].notnull()]
 
-    if mode == 'dataset':
-        d['Forward'] = d.progress_apply(lambda x: 1 if str(x['Source']) < str(x['Destination']) else 0, axis=1)
+    if (mode == 'training'):
+        d = convert_to_float(d)
+
+    d = d[d['Source'].notnull() & d['Destination'].notnull() & d['Source Port'].notnull() & \
+        d['Destination Port'].notnull() & (d['EtherType'] == 2048) & ((d['Protocol'] == 6) | (d['Protocol'] == 17))]
+
+    if mode == 'training':
+        d['Forward'] = d.progress_apply(lambda x: 1 if x['Source'] < x['Destination'] else 0, axis=1)
         print("\'Forward\' feature converted to float")
         d['UFid'] = d.progress_apply(lambda x: flow_id(x), axis=1)
         print("\'UFid\' feature converted to float")
     else:
-        d['Forward'] = d.apply(lambda x: 1 if str(x['Source']) < str(x['Destination']) else 0, axis=1)
+        d['Forward'] = d.apply(lambda x: 1 if x['Source'] < x['Destination'] else 0, axis=1)
         d['UFid'] = d.apply(lambda x: flow_id(x), axis=1)
 
-    if mode == 'dataset':
+    if mode == 'training':
         print("\nSorting Dataframe...")
 
     d = d.sort_values(['UFid','Time'])
 
-    if mode == 'dataset':
+    if mode == 'training':
         print("\nExtracting Flow Features...")
 
-    if (mode == 'dataset'):
-        Flows = pd.DataFrame(columns=['SrcIP', 'SrcPort', 'DstIP', 'DstPort', 'Duration', 'PX', 'NNP', 'NSP', 'PSP', 'IOPR', 'Reconnect', 'FPS', 'TBT', 'APL', 'DPL', 'PV', 'BPS', 'PS', 'AIT', 'MPL', 'MP', 'Label'])
-    else:
-        Flows = pd.DataFrame(columns=['SrcIP', 'SrcPort', 'DstIP', 'DstPort', 'Duration', 'PX', 'NNP', 'NSP', 'PSP', 'IOPR', 'Reconnect', 'FPS', 'TBT', 'APL', 'DPL', 'PV', 'BPS', 'PS', 'AIT', 'MPL', 'MP'])
+    Flows = []
 
     prev = None
     Packets = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', 'EtherType', 'Protocol', 'TCP Flags', 'Length', 'TCP Payload Length', 'UDP Length', 'TTL', 'Forward', 'UFid'])
-    
+    Time = []
+    TCP_Flags = []
+    Length = []
+    TCP_Payload_Length = []
+    UDP_Length = []
+    TTL = []
+    Forward = []
+
     for index, row in tqdm(d.iterrows(), total=d.shape[0]):
         if mode == 'traffic':
             if row['Source'] != ip2int(local_ip) and row['Destination'] != ip2int(local_ip):
                 continue
 
         if prev is None:
-            Packets.loc[len(Packets)] = row
+            Time.append(row['Time'])
+            TCP_Flags.append(row['TCP Flags'])
+            Length.append(row['Length'])
+            TCP_Payload_Length.append(row['TCP Payload Length'])
+            UDP_Length.append(row['UDP Length'])
+            TTL.append(row['TTL'])
+            Forward.append(row['Forward'])
         
         elif row['Protocol'] == 6 and row['UFid'] == prev['UFid']: #MOD 3
-            Packets.loc[len(Packets)] = row
+            Time.append(row['Time'])
+            TCP_Flags.append(row['TCP Flags'])
+            Length.append(row['Length'])
+            TCP_Payload_Length.append(row['TCP Payload Length'])
+            UDP_Length.append(row['UDP Length'])
+            TTL.append(row['TTL'])
+            Forward.append(row['Forward'])
             
         elif row['Protocol'] == 17 and row['UFid'] == prev['UFid']:
-            Packets.loc[len(Packets)] = row
-            if (row['Forward'] == 0):
-                updateFlows(Flows, Packets, prev, local_ip, mode, malicious_IPs_list)            
-                Packets.drop(Packets.index, inplace=True)
+            Time.append(row['Time'])
+            TCP_Flags.append(row['TCP Flags'])
+            Length.append(row['Length'])
+            TCP_Payload_Length.append(row['TCP Payload Length'])
+            UDP_Length.append(row['UDP Length'])
+            TTL.append(row['TTL'])
+            Forward.append(row['Forward'])
+            # if (row['Forward'] == 0):
+            #     updateFlows(Flows, row['Source'], row['Source Port'], row['Destination'], row['Destination Port'], row['Protocol'], Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list)       
+            #     Time.clear()
+            #     TCP_Flags.clear()
+            #     Length.clear()
+            #     TCP_Payload_Length.clear()
+            #     UDP_Length.clear()
+            #     TTL.clear()
+            #     Forward.clear()
         else:
-            if not (prev['Protocol'] == 17 and prev['Forward'] == 0):
-                updateFlows(Flows, Packets, prev, local_ip, mode, malicious_IPs_list)
-                Packets.drop(Packets.index, inplace=True)
-            Packets.loc[len(Packets)] = row
+            # if not (prev['Protocol'] == 17 and prev['Forward'] == 0):
+            #     updateFlows(Flows, prev['Source'], prev['Source Port'], prev['Destination'], prev['Destination Port'], row['Protocol'], Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list)
+            #     Time.clear()
+            #     TCP_Flags.clear()
+            #     Length.clear()
+            #     TCP_Payload_Length.clear()
+            #     UDP_Length.clear()
+            #     TTL.clear()
+            #     Forward.clear()
+
+            updateFlows(Flows, prev['Source'], prev['Source Port'], prev['Destination'], prev['Destination Port'], row['Protocol'], Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list)
+            Time.clear()
+            TCP_Flags.clear()
+            Length.clear()
+            TCP_Payload_Length.clear()
+            UDP_Length.clear()
+            TTL.clear()
+            Forward.clear()
+
+            Time.append(row['Time'])
+            TCP_Flags.append(row['TCP Flags'])
+            Length.append(row['Length'])
+            TCP_Payload_Length.append(row['TCP Payload Length'])
+            UDP_Length.append(row['UDP Length'])
+            TTL.append(row['TTL'])
+            Forward.append(row['Forward'])
         
         prev = row
-
-    # Fill the NaN values in the "Flows" Dataframe
-    Flows.fillna(0, inplace=True)
     
+    updateFlows(Flows, prev['Source'], prev['Source Port'], prev['Destination'], prev['Destination Port'], row['Protocol'], Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list)
+
+    if mode == 'training':
+        df_flows = pd.DataFrame(Flows, columns=['SrcIP', 'SrcPort', 'DstIP', 'DstPort', 'Duration', 'PX', 'NNP', 'NSP', 'PSP', 'IOPR', 'Reconnect', 'FPS', 'TBT', 'APL', 'DPL', 'PV', 'BPS', 'PS', 'AIT', 'MPL', 'MP', 'Label'])
+    else:
+        df_flows = pd.DataFrame(Flows, columns=['SrcIP', 'SrcPort', 'DstIP', 'DstPort', 'Duration', 'PX', 'NNP', 'NSP', 'PSP', 'IOPR', 'Reconnect', 'FPS', 'TBT', 'APL', 'DPL', 'PV', 'BPS', 'PS', 'AIT', 'MPL', 'MP'])
+    
+    df_flows.fillna(0, inplace=True)
+
     del Packets
 
-    return Flows
+    return df_flows
 
 
 if __name__ == '__main__':
@@ -245,7 +305,7 @@ if __name__ == '__main__':
         for i in range(len(malicious_IPs_list)):
             malicious_IPs_list[i] = float(ip2int(malicious_IPs_list[i]))
 
-        flows = FlowFeaturesExtractor(dataset, 'dataset', malicious_IPs_list)
+        flows = FlowFeaturesExtractor(dataset, 'training', malicious_IPs_list)
         print(flows)
         print("\nSaving extracted Flow Features")
         flows.to_hdf('training_dataset/training.hdf5', key='flows', mode='w')

@@ -6,38 +6,25 @@
 
 struct Packet {
 	u64 timestamp;
-	u32 src_ip;               // source ip
-	u32 dst_ip;               // destination ip
-	unsigned short src_port;  // source port
-	unsigned short dst_port;  // destination port
-	unsigned int ethertype;   // EtherType
-	unsigned char protocol;  // destination port
-	unsigned char tcp_Flags; // TCP Flags
+	u32 src_ip;
+	u32 dst_ip;
+	unsigned short src_port;
+	unsigned short dst_port;
+	unsigned int ethertype;
+	unsigned char protocol;
+	unsigned char tcp_Flags;
 	unsigned short len;
 	unsigned short tcp_payload_len;
 	unsigned short udp_len;
 	unsigned char ttl;
 };
 
-//BPF_TABLE(map_type, key_type, leaf_type, table_name, num_entry)
-//map <Key, Leaf>
-//tracing sessions having same Key(dst_ip, src_ip, dst_port,src_port)
+
 BPF_QUEUE(local_ip, u32, 1);
 BPF_QUEUE(queue, struct Packet, 1024);
 BPF_HASH(sospicious_IPs, u32, char);
 
-/*eBPF program.
-  Filter IP and TCP packets, having payload not empty
-  and containing "HTTP", "GET", "POST"  as first bytes of payload.
-  AND ALL the other packets having same (src_ip,dst_ip,src_port,dst_port)
-  this means belonging to the same "session"
-  this additional check avoids url truncation, if url is too long
-  userspace script, if necessary, reassembles urls split in 2 or more packets.
-  if the program is loaded as PROG_TYPE_SOCKET_FILTER
-  and attached to a socket
-  return  0 -> DROP the packet
-  return -1 -> KEEP the packet and return it to user space (userspace can read it from the socket_fd )
-*/
+
 int ebpf_program(struct __sk_buff *skb) {
 	struct Packet packet;
 	struct ethernet_t *ethernet = NULL;

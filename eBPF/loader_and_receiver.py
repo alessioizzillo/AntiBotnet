@@ -30,8 +30,6 @@ else:
 # Initialize BPF - load source code from 'ebpf/eBPF_program.c.'
 bpf = BPF(src_file="eBPF_program.c", debug=0)
 
-# Get pointer to bpf map 'local_ip' of type 'BPF_QUEUE' and assign the local IP to send to eBPF
-# program
 local_ip = bpf['local_ip']
 local_ip.push(ctypes.c_uint(ip2int(socket.gethostbyname(socket.gethostname()))))
 
@@ -75,7 +73,7 @@ while 1:
         ts = (k.timestamp-start)/1000000000+time.time()
 
         # Update the Dataframe of the captured packets
-        Packets.loc[len(Packets)] = [ts, int2ip(k.src_ip), int2ip(k.dst_ip), k.src_port, \
+        Packets.loc[len(Packets)] = [ts, k.src_ip, k.dst_ip, k.src_port, \
             k.dst_port, k.ethertype, k.protocol, k.tcp_Flags, k.len, k.tcp_payload_len, k.udp_len, k.ttl]
 
         n += 1

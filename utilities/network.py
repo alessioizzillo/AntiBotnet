@@ -12,4 +12,4 @@ def ip2int(addr):
     try:
         return struct.unpack("!I", socket.inet_aton(addr))[0]
     except:
-        return float('nan')
+        return float("nan")

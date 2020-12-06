@@ -28,7 +28,7 @@ class BotnetDetection(threading.Thread):
 
 
     def run(self):
-        self.flowbased_dataset = pd.read_csv(os.path.dirname(os.path.abspath(__file__))+"/flow_based_detection/training_dataset/incremental_training.csv")
+        self.flowbased_dataset = pd.read_csv(os.path.dirname(os.path.abspath(__file__))+"/flow_based_detection/training_dataset/incremental_learning.csv")
         
         print("Sending captured packets to the hosts of the P2P network")
         print("P2P IPs list:", self.p2p_IPs_list)      
@@ -40,7 +40,10 @@ class BotnetDetection(threading.Thread):
         print("---------------ANALYZING "+str(len(self.captured_packets.index))+" PACKETS---------------\n")
         flows, flow_results = FlowBasedDetection(self.captured_packets, self.flowbased_dataset)
         print()
-
+        
+        if not os.path.isdir(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic"):
+            os.makedirs(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic")
+        
         lock = FileLock(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic/traffic.csv.lock")
         with lock:
             try:
@@ -65,7 +68,7 @@ class BotnetDetection(threading.Thread):
 
         flows['Label'] = flows.apply(lambda x: 1 if float(x['SrcIP']) in graph_malicious_IPs or \
             float(x['DstIP']) in graph_malicious_IPs else 0, axis=1)
-        flows.to_csv("flow_based_detection/training_dataset/incremental_training.csv", \
+        flows.to_csv("flow_based_detection/training_dataset/incremental_learning.csv", \
             header=False, index=False, mode='a')
 
         results = flow_results # TO CHANGE

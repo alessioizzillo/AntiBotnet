@@ -119,7 +119,7 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
         df_test_results = pd.DataFrame(columns=['False Positive', 'False Negative', 'Total predictions'])
         df_test_results.to_csv("test_results.csv", index=False)            
 
-    flowbased_dataset.to_csv("flow_based_detection/training_dataset/incremental_training.csv", index=False)
+    flowbased_dataset.to_csv("flow_based_detection/training_dataset/incremental_learning.csv", index=False)
 
     while 1:
         n = 0

@@ -1,7 +1,11 @@
-import sys
 import socket
+import sys
+import os
+
+if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from flow_based_detection.flow_features_extractor import FlowFeaturesExtractor
-sys.path.append("..")
 from ml.random_forest_classifier import RandomForestClassifier
 from utilities.network import *
 
@@ -11,14 +15,10 @@ def FlowBasedDetection(captured_packets, dataset):
 
     local_ip = socket.gethostbyname(socket.gethostname())
 
-    malicious_IPs_list = []
-    with open("dataset/malicious_IPs.txt") as malicious_IPs:
-        malicious_IPs_list = malicious_IPs.readlines()
-
     print("   * Extracting flow features...")
-    flows = FlowFeaturesExtractor(captured_packets, 'predicting', malicious_IPs_list)
+    flows = FlowFeaturesExtractor(captured_packets, 'predicting', None)
 
-    print("   * Predicting...")
+    print("\n   * Predicting...")
     Y_Pred = RandomForestClassifier(flows, dataset)
 
     results = []
@@ -28,4 +28,4 @@ def FlowBasedDetection(captured_packets, dataset):
 
     results = list(dict.fromkeys(results))
 
-    return results
+    return flows, results

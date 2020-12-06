@@ -22,7 +22,8 @@ struct Packet {
 
 BPF_QUEUE(local_ip, u32, 1);
 BPF_QUEUE(queue, struct Packet, 1024);
-BPF_HASH(sospicious_IPs, u32, char);
+BPF_HASH(sospicious_IPs, u32, u32);
+BPF_HASH(P2P_IPs, u32, u32);
 
 
 int ebpf_program(struct __sk_buff *skb) {
@@ -31,10 +32,11 @@ int ebpf_program(struct __sk_buff *skb) {
 	struct ip_t *ip = NULL;
 	struct tcp_t *tcp = NULL;
 	struct udp_t *udp = NULL;
-
 	u8 *cursor = 0;
 	u32 localIP;
-	local_ip.pop(&localIP);
+	u32 *P2P_port;
+
+	local_ip.peek(&localIP);
 
 	ethernet = cursor_advance(cursor, sizeof(*ethernet));
 	
@@ -51,8 +53,10 @@ int ebpf_program(struct __sk_buff *skb) {
 		packet.len = ip->tlen+sizeof(*ethernet);
 		packet.ttl = ip->ttl;
 	}
-	else
-		return 0;
+	else{
+		bpf_trace_printk("ALLOWED packet\n");
+		return -1;
+	}
 
 	if (packet.protocol == 6){
 		tcp = cursor_advance(cursor, sizeof(*tcp));
@@ -72,13 +76,38 @@ int ebpf_program(struct __sk_buff *skb) {
 		packet.udp_len = udp->length;
 		queue.push(&packet, BPF_EXIST);
 	} 
-	else
+	else{
+		bpf_trace_printk("ALLOWED packet\n");
 		return -1;
+	}
 
-	if (packet.dst_ip != localIP && sospicious_IPs.lookup(&packet.dst_ip) != NULL)
+	P2P_port = P2P_IPs.lookup(&packet.dst_ip);
+	if (P2P_port != NULL){
+		if (((*P2P_port) == packet.src_port) || ((*P2P_port) == packet.dst_port)){
+			bpf_trace_printk("ALLOWED packet: 'src_ip' in 'P2P_IPs' hash and '(dst/src)_port' used in P2P network\n");
+			return -1;
+		}
+	}
+	else{
+		P2P_port = P2P_IPs.lookup(&packet.src_ip);
+		if (P2P_port != NULL)
+			if (((*P2P_port) == packet.src_port) || ((*P2P_port) == packet.dst_port)){
+				bpf_trace_printk("ALLOWED packet: 'dst_ip' in 'P2P_IPs' hash and '(dst/src)_port' used in P2P network\n");
+				return -1;
+			}
+	}
+
+
+	if (packet.src_ip == localIP && packet.dst_ip != localIP && sospicious_IPs.lookup(&packet.dst_ip) != NULL){
+		bpf_trace_printk("BLOCKED packet: 'dst_ip' in 'sospicious_IPs' hash\n");
+		return 0;
+	}
+	else if (packet.src_ip != localIP && packet.dst_ip == localIP && sospicious_IPs.lookup(&packet.src_ip) != NULL){
+		bpf_trace_printk("BLOCKED packet: 'src_ip' in 'sospicious_IPs' hash\n");
+		return 0;
+	}
+	else{
+		bpf_trace_printk("ALLOWED packet\n");
 		return -1;
-	else if (packet.src_ip != localIP && sospicious_IPs.lookup(&packet.src_ip) != NULL)
-		return -1;
-	
-	return 0;
+	}
 }

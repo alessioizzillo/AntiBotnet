@@ -1,13 +1,18 @@
 import numpy as np
+from tqdm import tqdm
 import pandas as pd
 from graph_tool.all import *
-import sys, os
+import sys
+import os
 
-sys.path.append("..")
+if os.path.dirname(os.path.abspath(__file__)) in sys.path:
+    sys.path.remove(os.path.dirname(os.path.abspath(__file__)))
+
+if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from utilities.network import *
-
-sys.path.append("graph_based_detection")
-import create_graph
+from graph_based_detection.create_graph import CsvGraph
 
 
 # Disable print statements
@@ -45,7 +50,7 @@ def normalize(array):
 
     # Note that some measures of centrality can be NaN so I change the NaN
     # values to 0
-    array = np.nan_to_num(array)
+    np.nan_to_num(array, copy=False)
 
     return array
 
@@ -88,9 +93,10 @@ def convert_to_float(d):
 
 def GraphFeaturesExtractor(mode, dataset_file, botnet_nodes, verbose = True):
     if (mode == 'training'):
+        tqdm.pandas()
         convert_to_float(dataset_file)
         
-    csv_graph = create_graph.CsvGraph(dataset_file)
+    csv_graph = CsvGraph(dataset_file)
 
     # Dictionary with IP addresses as keys and list of 12-vectors as the value
     dict_x = {}
@@ -103,10 +109,15 @@ def GraphFeaturesExtractor(mode, dataset_file, botnet_nodes, verbose = True):
         blockPrint()
 
     if (mode == 'training'):
-        g = csv_graph.make_graph(save_graph=True)
+        if not os.path.isdir("training_dataset"):
+            os.makedirs("training_dataset")
+        if not os.path.isdir("training_dataset/graph"):
+            os.makedirs("training_dataset/graph")
+        g = csv_graph.make_graph(save_graph=True, save_filename="training_dataset/graph/graph_structure.gt")
     else:
         g = csv_graph.make_graph(save_graph=False)
 
+    np.seterr(divide='ignore', invalid='ignore')
 
     # Degree
     print("Out-degrees...")
@@ -137,9 +148,9 @@ def GraphFeaturesExtractor(mode, dataset_file, botnet_nodes, verbose = True):
     print("Katz...")
     k = normalize(katz(g).a)
     print("Authority...")
-    auth = normalize(hits(g)[1].a)
+    auth = normalize(hits(g, max_iter=100)[1].a)
     print("Hub...")
-    hub = normalize(hits(g)[2].a)
+    hub = normalize(hits(g, max_iter=100)[2].a)
     print("Clustering...")
     # This seems to take a long time to run
     clustering = normalize(local_clustering(g).a)
@@ -328,6 +339,5 @@ if __name__ == '__main__':
         graph_features.fillna(0, inplace=True)
         graph_features.to_hdf('training_dataset/training.hdf5', key='graph_features', mode='w', format='table')
     else:
-        print("\nUSAGE (Windows): python flow_features_extractor.py <path of the csv dataset> <path of the file containing malicious IPs>")
-        print("USAGE (Linux): python3 flow_features_extractor.py <path of the csv dataset> <path of the file containing malicious IPs>\n")
+        print("USAGE: python3 graph_features_extractor.py <path of the csv dataset> <path of the file containing malicious IPs>\n")
         sys.exit(-1)

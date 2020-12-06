@@ -119,7 +119,6 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
         df_test_results = pd.DataFrame(columns=['False Positive', 'False Negative', 'Total predictions'])
         df_test_results.to_csv("test_results.csv", index=False)            
 
-    flowbased_dataset.to_csv("flow_based_detection/training_dataset/incremental_training.csv", index=False)
 
     while 1:
         n = 0
@@ -144,9 +143,9 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
 
         # Start a thread to detect the normal and sospicious IPs present in captured traffic
         if mode == 'test':
-            taskqueue_thread.put(BotnetDetection(mode, bpf, test_malicious_IPs_list, Packets.copy(), graphbased_dataset))
+            taskqueue_thread.put(BotnetDetection(mode, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, graphbased_dataset))
         else:
-            taskqueue_thread.put(BotnetDetection(mode, bpf, None, Packets.copy(), graphbased_dataset))
+            taskqueue_thread.put(BotnetDetection(mode, bpf, None, Packets.copy(), flowbased_dataset, graphbased_dataset))
         Packets.drop(Packets.index, inplace=True)
 
 
@@ -158,76 +157,13 @@ if __name__ == '__main__':
     else:
         error = 1
 
-    if error == 0 and mode == 'test':
-        if (len(sys.argv) == 7):
-            interface = sys.argv[2]
-            try:
-                n_packets = int(sys.argv[3])
-            except:
-                print("\n**ERROR**: inserted 'number of packets' (arg 3) is not numeric!")
-                error = 1
-
-            if not error:
-                test_pcapfile = sys.argv[4]
-                if os.path.exists(test_pcapfile):
-                    ip2replace = sys.argv[5]
-                    if str(ip2int(ip2replace)) == 'nan':
-                        print("\n**ERROR**: inserted 'IP to replace' (arg 5) is not valid!\n")
-                        error = 1
-                else:
-                    print("\n**ERROR**: inserted 'test pcap file' (arg 4) does not exist!\n")
-                    error = 1
-
-            if not error:
-                test_malicious_IPs_file = sys.argv[6]
-                if not os.path.exists(test_malicious_IPs_file):
-                    print("\n**ERROR**: inserted 'test malicious IPs file' (arg 6) does not exist!\n")
-                    error = 1
-
-            target_P2P_IP = None
-
-        elif (len(sys.argv) == 8):
-            interface = sys.argv[2]
-            try:
-                n_packets = int(sys.argv[3])
-            except:
-                print("\n**ERROR**: inserted 'number of packets' (arg 3) is not numeric!")
-                error = 1
-
-            if not error:
-                test_pcapfile = sys.argv[4]
-                if not os.path.exists(test_pcapfile):
-                    print("\n**ERROR**: inserted 'test pcap file' (arg 4) does not exist!\n")
-                    error = 1
-
-            if not error:
-                ip2replace = sys.argv[5]
-                if str(ip2int(ip2replace)) == 'nan':
-                    print("\n**ERROR**: inserted 'IP to replace' (arg 5) is not valid!\n")
-                    error = 1
-
-            if not error:
-                test_malicious_IPs_file = sys.argv[6]
-                if not os.path.exists(test_malicious_IPs_file):
-                    print("\n**ERROR**: inserted 'test malicious IPs file' (arg 6) does not exist!\n")
-                    error = 1
-
-            if not error:
-                target_P2P_IP = sys.argv[7]
-                if str(ip2int(target_P2P_IP)) == 'nan':
-                    print("\n**ERROR**: inserted 'P2P IP' (arg 7) is not valid!")
-                    error = 1
-
-        else:
-            error = 1
-
-    elif error == 0 and mode == 'real-world':
+    if error == 0 and mode == 'test' or mode == 'real-world':
         if (len(sys.argv) == 4):
             interface = sys.argv[2]
             try:
                 n_packets = int(sys.argv[3])
             except:
-                print("\n**ERROR**: inserted 'number of packets' (arg 3) is not numeric!")
+                print("\n**ERROR**: 'number of packets' (arg 3) is not numeric!")
                 error = 1
             target_P2P_IP = None
 
@@ -236,13 +172,13 @@ if __name__ == '__main__':
             try:
                 n_packets = int(sys.argv[3])
             except:
-                print("\n**ERROR**: inserted 'number of packets' (arg 3) is not numeric!")
+                print("\n**ERROR**: 'number of packets' (arg 3) is not numeric!")
                 error = 1
 
             if not error:
                 target_P2P_IP = sys.argv[4]
                 if str(ip2int(target_P2P_IP)) == 'nan':
-                    print("\n**ERROR**: inserted 'P2P IP' (arg 4) is not valid!")
+                    print("\n**ERROR**: 'P2P IP' (arg 4) is not valid!")
                     error = 1
         else:
             error = 1
@@ -253,19 +189,41 @@ if __name__ == '__main__':
 
     if error:
         print("\nUSAGE (TEST MODE)")
-        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <path of pcap file to test> <IP to replace in the test pcap file> <path of txt with list of malicious IPs of test pcap file>")
-        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <path of pcap file to test> <IP to replace in the test pcap file> <path of txt with list of malicious IPs of test pcap file> <IP of an active host of the P2P network>")
+        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture>")
+        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <IP of an active host of the P2P network>")
         print("\nUSAGE (REAL-WORLD MODE)")
         print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture>")
         print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture> <IP of an active host of the P2P network>\n")
         sys.exit(-1)
 
-    if (mode == 'test'):
+    if mode == 'test':
+        print("\nPut the path of the pcap file to test:")
+        test_pcapfile = input()
+        while not os.path.exists(test_pcapfile):
+            print("\n**ERROR**: inserted 'test pcap file' does not exist!\n")
+            print("Put the path of the pcap file to test:")
+            test_pcapfile = input()
+        
+        print("\nPut the IP to replace into test pcap file:")
+        ip2replace = input()
+        while str(ip2int(ip2replace)) == 'nan':
+            print("\n**ERROR**: inserted 'IP to replace' is not valid!\n")
+            print("Put the IP to replace into test pcap file:")
+            ip2replace = input()
+
+        print("\nPut the path of the file where malicious IPs of the test pcap file are listed:")
+        test_malicious_IPs_file = input()
+        while not os.path.exists(test_malicious_IPs_file):
+            print("\n**ERROR**: inserted 'test pcap file' does not exist!\n")
+            print("Put the path of the pcap file to test:")
+            test_malicious_IPs_file = input()
+
         with open(test_malicious_IPs_file) as malicious_IPs:
             test_malicious_IPs_list = malicious_IPs.read()
-
+        
         test_malicious_IPs_list = test_malicious_IPs_list.split('\n')
 
+    if (mode == 'test'):
         AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malicious_IPs_list, target_P2P_IP)
     else:
         AntiBotnet(mode, interface, n_packets, None, None, None, target_P2P_IP)

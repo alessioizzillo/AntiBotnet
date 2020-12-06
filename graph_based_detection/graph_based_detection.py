@@ -1,21 +1,21 @@
 import sys
+import os
 
-sys.path.append("..")
+if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from ml.random_forest_classifier import *
+from graph_based_detection.graph_features_extractor import GraphFeaturesExtractor
 
-sys.path.append("graph_based_detection")
-import graph_features_extractor
-import create_graph
 
 
 def GraphBasedDetection(traffic_file, train_dataset):
     print("GRAPH-BASED DETECTION:")
 
     print("   * Extracting graph features...")
-    dataset = graph_features_extractor.GraphFeaturesExtractor('predicting', traffic_file, None, \
-        verbose = False)
+    dataset = GraphFeaturesExtractor('predicting', traffic_file, None, verbose=False)
 
-    print("   * Predicting...")
+    print("\n   * Predicting...")
     Y_Pred = RandomForestClassifier(dataset, train_dataset)
 
     results = []

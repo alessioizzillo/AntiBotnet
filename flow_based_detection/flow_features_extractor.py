@@ -5,9 +5,16 @@ from tqdm import tqdm
 import socket
 import numpy
 import sys
+import os
 
-sys.path.append("..")
+if os.path.dirname(os.path.abspath(__file__)) in sys.path:
+    sys.path.remove(os.path.dirname(os.path.abspath(__file__)))
+
+if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from utilities.network import *
+
 
 warnings.simplefilter(action="ignore", category=SettingWithCopyWarning)
 
@@ -308,8 +315,9 @@ if __name__ == '__main__':
         flows = FlowFeaturesExtractor(dataset, 'training', malicious_IPs_list)
         print(flows)
         print("\nSaving extracted Flow Features")
+        if not os.path.isdir("training_dataset"):
+            os.makedirs("training_dataset")
         flows.to_hdf('training_dataset/training.hdf5', key='flows', mode='w')
     else:
-        print("\nUSAGE (Windows): python flow_features_extractor.py <path of the csv dataset> <path of the file containing malicious IPs>")
-        print("USAGE (Linux): python3 flow_features_extractor.py <path of the csv dataset> <path of the file containing malicious IPs>\n")
+        print("\nUSAGE: python3 flow_features_extractor.py <path of the csv dataset> <path of the file containing malicious IPs>\n")
         sys.exit(-1)

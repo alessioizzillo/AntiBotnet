@@ -1,9 +1,12 @@
-import sys
 from graph_tool.all import *
 import bisect
 from tqdm import tqdm
+import sys
+import os
 
-sys.path.append("..")
+if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from utilities.network import *
 
 

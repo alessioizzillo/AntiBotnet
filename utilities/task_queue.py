@@ -1,27 +1,29 @@
-from threading import Thread
+import threading
 from queue import Queue
 import ctypes
 
 
-class TaskQueue(Thread):
+class TaskQueue(threading.Thread):
     def __init__(self):
+        self.current_thread = None
+        self._stopper = threading.Event()
         self.taskqueue = Queue()
-        Thread.__init__(self)
+        threading.Thread.__init__(self)
     
+    def stop(self):
+        self._stopper.set()
+
     def run(self):
-        while(True):
+        while not self._stopper.isSet():
             if self.taskqueue.empty():
                 continue
-            thread = self.taskqueue.get()
-            thread.start()
-            thread.join()
+            self.current_thread = self.taskqueue.get()
+            self.current_thread.start()
+            try:
+                self.current_thread.join()
+            except:
+                pass
+        print("\n---ANTIBOTNET (EXIT)---\n")
 
     def put(self, thread):
         self.taskqueue.put(thread)
-
-    def raise_exception(self): 
-        thread_id = self.get_id() 
-        res = ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, ctypes.py_object(SystemExit)) 
-        if res > 1:
-            ctypes.pythonapi.PyThreadState_SetAsyncExc(thread_id, 0) 
-            print('**ERROR**: TaskQueue thread exception raise failure')

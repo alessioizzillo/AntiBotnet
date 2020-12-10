@@ -11,7 +11,7 @@ from graph_based_detection.graph_based_detection import GraphBasedDetection
 
 
 class IncrementalLearning(threading.Thread):
-    def __init__(self, mode, gbd_n_estimators, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, graphbased_dataset, flowbased_dataset_rwlock):
+    def __init__(self, mode, gbd_n_estimators, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, graphbased_dataset, flowbased_dataset_rwlock, GraphBasedDetection_lock):
         self.mode = mode
         self.gbd_n_estimators = gbd_n_estimators
         self.bpf = bpf
@@ -20,6 +20,7 @@ class IncrementalLearning(threading.Thread):
         self.flowbased_dataset = flowbased_dataset
         self.graphbased_dataset = graphbased_dataset
         self.flowbased_dataset_rwlock = flowbased_dataset_rwlock
+        self.GraphBasedDetection_lock = GraphBasedDetection_lock
         self.test_malicious_IPs_list = test_malicious_IPs_list
 
         self.gbd_exec_time = 0
@@ -34,6 +35,17 @@ class IncrementalLearning(threading.Thread):
 
 
     def run(self):
+        # All P2P hosts must write into shared_traffic/traffic.csv at least once before Graph detection starts
+        while(1):
+            cont = 1
+            bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
+            for i in bpf_hash_P2P_IPs.items():
+                if int2ip(i[0].value) not in self.GraphBasedDetection_lock:
+                    cont = 0
+                    break
+            if cont:
+                break
+
         lock = FileLock("shared_traffic/traffic.csv.lock")
         with lock:
             try:
@@ -43,6 +55,11 @@ class IncrementalLearning(threading.Thread):
                 open("shared_traffic/traffic.csv", "w")
             except:
                 df = self.captured_packets
+            try:    
+                self.GraphBasedDetection_lock[:] = []
+            except:
+                pass
+        
         df.to_csv("test_traffic.csv", mode='a', header=False, index=False)
         
         start_time = perf_counter()

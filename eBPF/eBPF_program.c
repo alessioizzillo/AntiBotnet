@@ -65,8 +65,6 @@ int ebpf_program(struct __sk_buff *skb) {
 		packet.tcp_Flags = 128*tcp->flag_cwr+64*tcp->flag_ece+32*tcp->flag_urg+16*tcp->flag_ack+8*tcp->flag_psh+4*tcp->flag_rst+2*tcp->flag_syn+1*tcp->flag_fin;
 		packet.tcp_payload_len = ip->tlen-(ip->hlen+tcp->offset*4);
 		packet.udp_len = 0;
-
-		queue.push(&packet, BPF_EXIST);
 	}
 	else if (packet.protocol == 17){
 		udp = cursor_advance(cursor, sizeof(*udp));
@@ -75,28 +73,30 @@ int ebpf_program(struct __sk_buff *skb) {
 		packet.tcp_Flags = 0;
 		packet.tcp_payload_len = 0;
 		packet.udp_len = udp->length;
-
-		queue.push(&packet, BPF_EXIST);
 	} 
 	else{
 		bpf_trace_printk("ALLOWED packet\n");
 		return -1;
 	}
 
-	P2P_port = P2P_IPs.lookup(&packet.dst_ip);
-	if (P2P_port != NULL){
-		if (((*P2P_port) == packet.src_port) || ((*P2P_port) == packet.dst_port)){
-			bpf_trace_printk("ALLOWED packet: 'src_ip' in 'P2P_IPs' hash and '(dst/src)_port' used in P2P network\n");
-			return -1;
-		}
-	}
-	else{
-		P2P_port = P2P_IPs.lookup(&packet.src_ip);
-		if (P2P_port != NULL)
-			if (((*P2P_port) == packet.src_port) || ((*P2P_port) == packet.dst_port)){
+
+	if ((packet.protocol == 6) || (packet.protocol == 17)){
+		if (P2P_IPs.lookup(&packet.dst_ip) != NULL){
+			if ((packet.src_port == 9020) || (packet.dst_port == 9020) || (packet.src_port == 8000) || (packet.dst_port == 8000)){
 				bpf_trace_printk("ALLOWED packet: 'dst_ip' in 'P2P_IPs' hash and '(dst/src)_port' used in P2P network\n");
 				return -1;
 			}
+		}
+		else{
+			if (P2P_IPs.lookup(&packet.src_ip) != NULL){
+				if ((packet.src_port == 9020) || (packet.dst_port == 9020) || (packet.src_port == 8000) || (packet.dst_port == 8000)){
+					bpf_trace_printk("ALLOWED packet: 'src_ip' in 'P2P_IPs' hash and '(dst/src)_port' used in P2P network\n");
+					return -1;
+				}
+			}
+		}
+		
+		queue.push(&packet, BPF_EXIST);
 	}
 
 

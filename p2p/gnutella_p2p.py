@@ -28,6 +28,7 @@ GLOBAL DATA
 """
 connections = []
 bpf_hash_P2P_IPs = None
+GBD_lock = []
 listener = None
 nodeID = None
 directory = None
@@ -62,6 +63,9 @@ class GnutellaProtocol(basic.LineReceiver):
         self.verified = False
     
     def connectionMade(self):
+        global bpf_hash_P2P_IPs
+        global connections
+
         connections.append(self)
         peer = self.transport.getPeer()
         writeLog("Connected to {0}:{1}\n".format(peer.host, peer.port))
@@ -76,6 +80,9 @@ class GnutellaProtocol(basic.LineReceiver):
         IP = host.host
     
     def connectionLost(self, reason):
+        global bpf_hash_P2P_IPs
+        global connections
+
         connections.remove(self)
         peer = self.transport.getPeer()
         writeLog("Disconnected with {0}:{1}\n".format(peer.host, peer.port))
@@ -90,6 +97,8 @@ class GnutellaProtocol(basic.LineReceiver):
                 self.handleMessage(line)
     
     def handleMessage(self, data):
+        global connections
+
         peer = self.transport.getPeer()
         if (data.startswith("GNUTELLA CONNECT")):
             self.peerPort = int(data.split('\n')[1])
@@ -133,6 +142,8 @@ class GnutellaProtocol(basic.LineReceiver):
         return "{0}&{1}&{2}&".format(header, descrip, ttl) 
     
     def sendPing(self, msgid=None, ttl=7):
+        global connections
+
         if(ttl <= 0):
             return
         if msgid:
@@ -219,7 +230,7 @@ class Server(Resource):
     
     def render_POST(self, request):
         try:
-            x = threading.Thread(target=store_traffic, args=(str(request.content.read().decode('utf-8'))[1:-1],))
+            x = threading.Thread(target=store_traffic, args=(str(request.content.read().decode('utf-8'))[1:-1], request.transport.getPeer().host, ))
             x.start()
         except:
             pass
@@ -260,7 +271,9 @@ class CustomPort(tcp.Port):
 GLOBAL HELPER FUNCTIONS
 """
 
-def store_traffic(traffic):
+def store_traffic(traffic, ip_host):
+    global GBD_lock
+
     t = traffic.replace("\\\"", "\"")
     df_temp = pd.read_json(t)
 
@@ -275,6 +288,9 @@ def store_traffic(traffic):
         except:
             df = df_temp
         df.to_csv(path_traffic_dir+"/traffic.csv", index=False)
+        
+        if ip_host not in GBD_lock:
+            GBD_lock.append(ip_host)
 
 
 def makePeerConnection(IP=None, port=None):
@@ -341,7 +357,7 @@ def isValid(msgid):
 """
 MAIN FUNCTION
 """
-def Start_P2P(p2p_IPs_list, bpf, targetIP):
+def Start_P2P(GraphBasedDetection_lock, bpf, targetIP):
     global logFile
     global logPath
     global directory
@@ -351,6 +367,7 @@ def Start_P2P(p2p_IPs_list, bpf, targetIP):
     global nodeID
     global serverPort
     global bpf_hash_P2P_IPs
+    global GBD_lock
 
     def signal_handler(signalNumber, frame):
         try:
@@ -374,6 +391,7 @@ def Start_P2P(p2p_IPs_list, bpf, targetIP):
     directory = os.path.dirname(os.path.abspath(__file__))+"/log"
     bpf_hash_P2P_IPs = bpf['P2P_IPs']
     bpf_hash_P2P_IPs.clear()
+    GBD_lock = GraphBasedDetection_lock
 
 
     if directory:

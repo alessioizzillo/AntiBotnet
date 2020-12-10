@@ -14,14 +14,9 @@ from utilities.network import *
 def RandomForestClassifier(mode, dataset, train_dataset, n_est):
     local_ip = socket.gethostbyname(socket.gethostname())
 
-    sc_X = StandardScaler()
-
     # Load the features and the 'label' from the Training train_dataset
     X_Train = train_dataset.iloc[:, range(0, len(train_dataset.columns)-1, 1)].values
     Y_Train = train_dataset.iloc[:, len(train_dataset.columns)-1].values 
-
-    # Training features scaling 
-    X_Train = sc_X.fit_transform(X_Train)
 
     # Fit the Classifier into the Training set
     classifier = sklearn.ensemble.RandomForestClassifier(n_estimators = n_est, criterion = 'entropy', random_state = 0, n_jobs=-1)
@@ -29,7 +24,6 @@ def RandomForestClassifier(mode, dataset, train_dataset, n_est):
 
     # Load the features from the dataset captured
     X = dataset.iloc[:, range(0, len(dataset.columns), 1)].values
-    X = sc_X.transform(X)
 
     # Get results
     if mode == "proba":

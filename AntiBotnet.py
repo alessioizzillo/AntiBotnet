@@ -68,7 +68,7 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
 
     manager = SyncManager()
     manager.start(manager_init)
-    p2p_IPs_list = manager.list()
+    GraphBasedDetection_lock = manager.list()
     
     # Initialize BPF - load source code from 'ebpf/eBPF_program.c.'
     bpf = BPF(src_file=os.path.dirname(os.path.abspath(__file__))+"/eBPF/eBPF_program.c", debug=0)
@@ -79,7 +79,7 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
         os.makedirs(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic")
 
     global p2p_process
-    p2p_process = Process(target=Start_P2P, args=(p2p_IPs_list, bpf, target_P2P_IP, ))
+    p2p_process = Process(target=Start_P2P, args=(GraphBasedDetection_lock, bpf, target_P2P_IP, ))
     p2p_process.start()
 
     local_ip = bpf['local_ip']
@@ -171,9 +171,9 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
 
         # Start a thread to detect the normal and sospicious IPs present in captured traffic
         if mode == 'test':
-            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
+            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
         else:
-            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, None, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
+            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, None, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
         Packets.drop(Packets.index, inplace=True)
 
 

@@ -34,16 +34,13 @@ class IncrementalLearning(threading.Thread):
 
 
     def run(self):
-        if not os.path.isdir(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic"):
-            os.makedirs(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic")
-
-        lock = FileLock(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic/traffic.csv.lock")
+        lock = FileLock("shared_traffic/traffic.csv.lock")
         with lock:
             try:
-                df = pd.read_csv(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic/traffic.csv")
+                df = pd.read_csv("shared_traffic/traffic.csv")
                 df = df.append(self.captured_packets, ignore_index=True)
                 df.sort_values(['Time'], inplace=True)
-                open(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic/traffic.csv", "w")
+                open("shared_traffic/traffic.csv", "w")
             except:
                 df = self.captured_packets
         df.to_csv("test_traffic.csv", mode='a', header=False, index=False)

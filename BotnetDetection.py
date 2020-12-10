@@ -23,9 +23,6 @@ class BotnetDetection(threading.Thread):
         self.flowbased_dataset_rwlock = flowbased_dataset_rwlock
         self.test_malicious_IPs_list = test_malicious_IPs_list
         self.p2p_IPs_list = []
-        bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
-        for i in bpf_hash_P2P_IPs.items():
-            self.p2p_IPs_list.append(i[0].value)
 
         self.fbd_exec_time = 0
 
@@ -44,10 +41,15 @@ class BotnetDetection(threading.Thread):
         print()
         
         print("Sending captured packets to the hosts of the P2P network")
+        bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
+        for i in bpf_hash_P2P_IPs.items():
+            self.p2p_IPs_list.append(int2ip(i[0].value))
+
         print("P2P IPs list:", self.p2p_IPs_list)
         for ip in self.p2p_IPs_list:
             url = "http://{0}:9020".format(ip)
             try:
+                print("  * Sending POST request to:", url)
                 response = requests.post(url, json=self.captured_packets.to_json())
                 print("  * Response from", ip, ":", response)
             except:

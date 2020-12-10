@@ -263,15 +263,18 @@ GLOBAL HELPER FUNCTIONS
 def store_traffic(traffic):
     t = traffic.replace("\\\"", "\"")
     df_temp = pd.read_json(t)
-    lock = FileLock("shared_traffic/traffic.csv.lock")
+
+    path_traffic_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+"/shared_traffic"
+
+    lock = FileLock(path_traffic_dir+"/traffic.csv.lock")
     with lock:
         try:
-            df = pd.read_csv("shared_traffic/traffic.csv")
+            df = pd.read_csv(path_traffic_dir+"/traffic.csv")
             df = pd.concat([df, df_temp], ignore_index=True)
             df = df.sort_values(['Time'])
         except:
             df = df_temp
-        df.to_csv("shared_traffic/traffic.csv", index=False)
+        df.to_csv(path_traffic_dir+"/traffic.csv", index=False)
 
 
 def makePeerConnection(IP=None, port=None):

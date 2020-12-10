@@ -75,6 +75,9 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
 
     print("Connecting to P2P network:")
 
+    if not os.path.isdir(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic"):
+        os.makedirs(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic")
+
     global p2p_process
     p2p_process = Process(target=Start_P2P, args=(p2p_IPs_list, bpf, target_P2P_IP, ))
     p2p_process.start()

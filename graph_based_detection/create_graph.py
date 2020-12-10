@@ -11,7 +11,8 @@ from utilities.network import *
 
 
 class CsvGraph:
-    def __init__(self, dataset_file):
+    def __init__(self, mode, dataset_file):
+        self.mode = mode
         self.csv = dataset_file
         self.edges = []
         self.nodes = []
@@ -20,7 +21,7 @@ class CsvGraph:
         self.csv = self.csv[self.csv['Source'].notnull() & self.csv['Destination'].notnull() & self.csv['Source Port'].notnull() & \
             self.csv['Destination Port'].notnull() & (self.csv['EtherType'] == 2048) & ((self.csv['Protocol'] == 6) | (self.csv['Protocol'] == 17))]
 
-        for index, row in tqdm(self.csv.iterrows(), total=self.csv.shape[0]):
+        for index, row in (tqdm(self.csv.iterrows(), total=self.csv.shape[0]) if self.mode == 'training' else self.csv.iterrows()):
             try:
                 ip_source = row['Source']
                 ip_dest = row['Destination']
@@ -71,7 +72,7 @@ class CsvGraph:
 
         # Sorted list of tuples of the form (ip_address, vertex_index)
         vertex_ip_list = []
-        for node in tqdm(self.nodes, total=len(self.nodes)):
+        for node in (tqdm(self.nodes, total=len(self.nodes)) if self.mode == 'training' else self.nodes):
             v = g.add_vertex()
             g.vp.ip_address[v] = node
             bisect.insort_left(vertex_ip_list, (node, int(v)))

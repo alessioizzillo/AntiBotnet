@@ -96,7 +96,7 @@ def GraphFeaturesExtractor(mode, dataset_file, botnet_nodes, verbose = True):
         tqdm.pandas()
         convert_to_float(dataset_file)
         
-    csv_graph = CsvGraph(dataset_file)
+    csv_graph = CsvGraph(mode, dataset_file)
 
     # Dictionary with IP addresses as keys and list of 12-vectors as the value
     dict_x = {}

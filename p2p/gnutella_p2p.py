@@ -370,6 +370,7 @@ def Start_P2P(p2p_IPs_list, bpf, targetIP):
     serverPort = 9020
     directory = os.path.dirname(os.path.abspath(__file__))+"/log"
     bpf_hash_P2P_IPs = bpf['P2P_IPs']
+    bpf_hash_P2P_IPs.clear()
 
 
     if directory:
@@ -384,7 +385,8 @@ def Start_P2P(p2p_IPs_list, bpf, targetIP):
         printLine("  * Using directory: {0}".format(directory))
 
         #Set up Twisted clients
-        if targetIP != None:
+        if targetIP != None and targetIP != socket.gethostbyname(socket.gethostname()):
+            printLine("  * Connecting to: {0}".format(targetIP))
             connector = reactor.connectTCP(targetIP, targetPort, GnutellaFactory(initiating))
         
         listener = GnutellaFactory()

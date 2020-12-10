@@ -2,12 +2,14 @@ import sys
 import os
 import signal
 from bcc import BPF
+from bcc.table import QueueStack
 import ctypes
 import pandas as pd
-import time
+from time import time
 import signal
 from multiprocessing import Process
 from multiprocessing.managers import SyncManager
+from readerwriterlock import rwlock
 
 from utilities.network import *
 from utilities.task_queue import *
@@ -20,16 +22,18 @@ if os.path.dirname(os.path.abspath(__file__))+'/test' not in sys.path:
 from replay_pcap import replay_pcap
 
 
-taskqueue_thread = None
+BotnetDetection_threads = None
+IncrementalLearning_threads = None
 p2p_process = None
 test_process = None
-
+ignored_IPs = ['192.168.1.1']
 
 
 def signal_handler(signalNumber, frame):
     global p2p_process
     global test_process
-    global taskqueue_thread
+    global BotnetDetection_threads
+    global IncrementalLearning_threads
     
     if signalNumber == signal.SIGUSR1:
         os.kill(p2p_process.pid, signal.SIGINT)
@@ -37,10 +41,16 @@ def signal_handler(signalNumber, frame):
 
     try:
         p2p_process.join()
-        taskqueue_thread.stop()
+        IncrementalLearning_threads.stop()
+        BotnetDetection_threads.stop()
+        IncrementalLearning_threads.join()
+        BotnetDetection_threads.join()
         test_process.join()
     except:
+        print("EXIT WITH EXCEPTION")
         pass
+    
+    print("\n---ANTIBOTNET (EXIT)---\n")
 
     sys.exit(0)
 
@@ -50,7 +60,7 @@ def manager_init():
     signal.signal(signal.SIGTSTP, signal.default_int_handler)
 
 
-def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malicious_IPs_list, targetIP):
+def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, test_pcapfile, IPs2replace_file, test_malicious_IPs_list, target_P2P_IP):
     print("\n---ANTIBOTNET ("+mode.upper()+" MODE)---\n")
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -59,7 +69,7 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
     manager = SyncManager()
     manager.start(manager_init)
     p2p_IPs_list = manager.list()
-
+    
     # Initialize BPF - load source code from 'ebpf/eBPF_program.c.'
     bpf = BPF(src_file=os.path.dirname(os.path.abspath(__file__))+"/eBPF/eBPF_program.c", debug=0)
 
@@ -70,7 +80,7 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
     p2p_process.start()
 
     local_ip = bpf['local_ip']
-    local_ip.push(ctypes.c_uint(ip2int(socket.gethostbyname(socket.gethostname()))))
+    local_ip.push(ctypes.c_uint(ip2int(socket.gethostbyname(socket.gethostname()))), flags=QueueStack.BPF_EXIST)
 
     # Load eBPF program ebpf_program of type SOCKET_FILTER into the kernel eBPF vm.
     function_ebpf_program = bpf.load_func("ebpf_program", BPF.SOCKET_FILTER)
@@ -97,6 +107,9 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
     # Get pointer to bpf map 'queue' of type 'BPF_QUEUE'
     bpf_queue = bpf['queue']
 
+    bpf_hash_sospicious_IPs = bpf['sospicious_IPs']
+    bpf_hash_sospicious_IPs.clear()
+
     n = 0
     # Dataframe to store the captured packets
     Packets = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', \
@@ -105,22 +118,32 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
     flowbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/flow_based_detection/training_dataset/training.hdf5")
     graphbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/graph_based_detection/training_dataset/training.hdf5")
 
-    global taskqueue_thread
-    taskqueue_thread = TaskQueue()
-    taskqueue_thread.start()
+    global IncrementalLearning_threads
+    IncrementalLearning_threads = TaskQueue(mode, "IncrementalLearning")
+    IncrementalLearning_threads.start()
+
+    global BotnetDetection_threads
+    BotnetDetection_threads = TaskQueue(mode, "BotnetDetection")
+    BotnetDetection_threads.start()
 
     if (mode == 'test'):
         global test_process
-        test_process = Process(target=replay_pcap, args=(test_pcapfile, ip2replace))
+        test_process = Process(target=replay_pcap, args=(test_pcapfile, IPs2replace_file))
         test_process.start()
 
         signal.signal(signal.SIGUSR1, signal_handler)
 
-        df_test_results = pd.DataFrame(columns=['False Positive', 'False Negative', 'Total predictions'])
-        df_test_results.to_csv("test_results.csv", index=False)            
+        df_test_results = pd.DataFrame(columns=['Detection method', 'BotnetDetection  execution time', 'IncrementalLearning execution time'\
+            'FlowBasedDetection execution time', 'GraphBasedDetection execution time', 'True Positives', 'True Negatives', 'False Positive', 'False Negative', 'Total predictions'])
+        df_test_results.to_csv("test_results.csv", index=False)
 
-    flowbased_dataset.to_csv("flow_based_detection/training_dataset/incremental_learning.csv", index=False)
+        df_test_traffic = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', \
+            'EtherType', 'Protocol', 'TCP Flags', 'Length', 'TCP Payload Length', 'UDP Length', 'TTL'])
+        df_test_traffic.to_csv("test_traffic.csv", index=False)              
 
+    flowbased_dataset_rwlock = rwlock.RWLockFairD()
+
+    print("Started to capture packets...\n")
     while 1:
         n = 0
         while n < n_packets:
@@ -129,24 +152,25 @@ def AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malic
                 k = bpf_queue.pop()
             except KeyError:
                 continue
+            
+            if (int2ip(k.src_ip) not in ignored_IPs) and (int2ip(k.dst_ip) not in ignored_IPs):
+                if (n == 0):
+                    start = k.timestamp
 
-            if (n == 0):
-                start = k.timestamp
+                # Compute the timestamp (in seconds) and add it to Unix epoch
+                ts = (k.timestamp-start)/1000000000+time()
 
-            # Compute the timestamp (in seconds) and add it to Unix epoch
-            ts = (k.timestamp-start)/1000000000+time.time()
+                # Update the Dataframe of the captured packets
+                Packets.loc[len(Packets)] = [ts, k.src_ip, k.dst_ip, k.src_port, \
+                    k.dst_port, k.ethertype, k.protocol, k.tcp_Flags, k.len, k.tcp_payload_len, k.udp_len, k.ttl]
 
-            # Update the Dataframe of the captured packets
-            Packets.loc[len(Packets)] = [ts, k.src_ip, k.dst_ip, k.src_port, \
-                k.dst_port, k.ethertype, k.protocol, k.tcp_Flags, k.len, k.tcp_payload_len, k.udp_len, k.ttl]
-
-            n += 1
+                n += 1
 
         # Start a thread to detect the normal and sospicious IPs present in captured traffic
         if mode == 'test':
-            taskqueue_thread.put(BotnetDetection(mode, bpf, test_malicious_IPs_list, Packets.copy(), graphbased_dataset))
+            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
         else:
-            taskqueue_thread.put(BotnetDetection(mode, bpf, None, Packets.copy(), graphbased_dataset))
+            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, None, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
         Packets.drop(Packets.index, inplace=True)
 
 
@@ -159,7 +183,7 @@ if __name__ == '__main__':
         error = 1
 
     if error == 0 and mode == 'test':
-        if (len(sys.argv) == 7):
+        if (len(sys.argv) == 9):
             interface = sys.argv[2]
             try:
                 n_packets = int(sys.argv[3])
@@ -168,25 +192,39 @@ if __name__ == '__main__':
                 error = 1
 
             if not error:
-                test_pcapfile = sys.argv[4]
-                if os.path.exists(test_pcapfile):
-                    ip2replace = sys.argv[5]
-                    if str(ip2int(ip2replace)) == 'nan':
-                        print("\n**ERROR**: inserted 'IP to replace' (arg 5) is not valid!\n")
-                        error = 1
-                else:
-                    print("\n**ERROR**: inserted 'test pcap file' (arg 4) does not exist!\n")
+                try:
+                    fbd_n_estimators = int(sys.argv[4])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 4) is not numeric!\n")
                     error = 1
 
             if not error:
-                test_malicious_IPs_file = sys.argv[6]
+                try:
+                    gbd_n_estimators = int(sys.argv[5])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 5) is not numeric!\n")
+                    error = 1
+
+            if not error:
+                test_pcapfile = sys.argv[6]
+                if os.path.exists(test_pcapfile):
+                    IPs2replace_file = sys.argv[7]
+                    if not os.path.exists(IPs2replace_file):
+                        print("\n**ERROR**: inserted 'IPs to replace' file (arg 7) does not exist!\n")
+                        error = 1
+                else:
+                    print("\n**ERROR**: inserted 'test pcap file' (arg 6) does not exist!\n")
+                    error = 1
+
+            if not error:
+                test_malicious_IPs_file = sys.argv[8]
                 if not os.path.exists(test_malicious_IPs_file):
-                    print("\n**ERROR**: inserted 'test malicious IPs file' (arg 6) does not exist!\n")
+                    print("\n**ERROR**: inserted 'test malicious IPs file' (arg 8) does not exist!\n")
                     error = 1
 
             target_P2P_IP = None
 
-        elif (len(sys.argv) == 8):
+        elif (len(sys.argv) == 10):
             interface = sys.argv[2]
             try:
                 n_packets = int(sys.argv[3])
@@ -195,43 +233,48 @@ if __name__ == '__main__':
                 error = 1
 
             if not error:
-                test_pcapfile = sys.argv[4]
+                try:
+                    fbd_n_estimators = int(sys.argv[4])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 4) is not numeric!\n")
+                    error = 1
+
+            if not error:
+                try:
+                    gbd_n_estimators = int(sys.argv[5])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 5) is not numeric!\n")
+                    error = 1
+
+            if not error:
+                test_pcapfile = sys.argv[6]
                 if not os.path.exists(test_pcapfile):
-                    print("\n**ERROR**: inserted 'test pcap file' (arg 4) does not exist!\n")
+                    print("\n**ERROR**: inserted 'test pcap' file (arg 6) does not exist!\n")
                     error = 1
 
             if not error:
-                ip2replace = sys.argv[5]
-                if str(ip2int(ip2replace)) == 'nan':
-                    print("\n**ERROR**: inserted 'IP to replace' (arg 5) is not valid!\n")
+                IPs2replace_file = sys.argv[7]
+                if not os.path.exists(IPs2replace_file):
+                    print("\n**ERROR**: inserted 'IPs to replace' file (arg 7) does not exist!\n")
                     error = 1
 
             if not error:
-                test_malicious_IPs_file = sys.argv[6]
+                test_malicious_IPs_file = sys.argv[8]
                 if not os.path.exists(test_malicious_IPs_file):
-                    print("\n**ERROR**: inserted 'test malicious IPs file' (arg 6) does not exist!\n")
+                    print("\n**ERROR**: inserted 'test malicious IPs' file (arg 8) does not exist!\n")
                     error = 1
 
             if not error:
-                target_P2P_IP = sys.argv[7]
+                target_P2P_IP = sys.argv[9]
                 if str(ip2int(target_P2P_IP)) == 'nan':
-                    print("\n**ERROR**: inserted 'P2P IP' (arg 7) is not valid!")
+                    print("\n**ERROR**: inserted 'P2P IP' (arg 9) is not valid!")
                     error = 1
 
         else:
             error = 1
 
     elif error == 0 and mode == 'real-world':
-        if (len(sys.argv) == 4):
-            interface = sys.argv[2]
-            try:
-                n_packets = int(sys.argv[3])
-            except:
-                print("\n**ERROR**: inserted 'number of packets' (arg 3) is not numeric!")
-                error = 1
-            target_P2P_IP = None
-
-        elif (len(sys.argv) == 5):
+        if (len(sys.argv) == 6):
             interface = sys.argv[2]
             try:
                 n_packets = int(sys.argv[3])
@@ -240,9 +283,47 @@ if __name__ == '__main__':
                 error = 1
 
             if not error:
-                target_P2P_IP = sys.argv[4]
+                try:
+                    fbd_n_estimators = int(sys.argv[4])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 4) is not numeric!\n")
+                    error = 1
+
+            if not error:
+                try:
+                    gbd_n_estimators = int(sys.argv[5])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 5) is not numeric!\n")
+                    error = 1
+
+            target_P2P_IP = None
+
+        elif (len(sys.argv) == 7):
+            interface = sys.argv[2]
+            try:
+                n_packets = int(sys.argv[3])
+            except:
+                print("\n**ERROR**: inserted 'number of packets' (arg 3) is not numeric!")
+                error = 1
+
+            if not error:
+                try:
+                    fbd_n_estimators = int(sys.argv[4])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 4) is not numeric!\n")
+                    error = 1
+
+            if not error:
+                try:
+                    gbd_n_estimators = int(sys.argv[5])
+                except:
+                    print("\n**ERROR**: inserted 'number of RF estimators' (arg 5) is not numeric!\n")
+                    error = 1
+
+            if not error:
+                target_P2P_IP = sys.argv[6]
                 if str(ip2int(target_P2P_IP)) == 'nan':
-                    print("\n**ERROR**: inserted 'P2P IP' (arg 4) is not valid!")
+                    print("\n**ERROR**: inserted 'P2P IP' (arg 6) is not valid!")
                     error = 1
         else:
             error = 1
@@ -253,11 +334,11 @@ if __name__ == '__main__':
 
     if error:
         print("\nUSAGE (TEST MODE)")
-        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <path of pcap file to test> <IP to replace in the test pcap file> <path of txt with list of malicious IPs of test pcap file>")
-        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <path of pcap file to test> <IP to replace in the test pcap file> <path of txt with list of malicious IPs of test pcap file> <IP of an active host of the P2P network>")
+        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier> <path of pcap file to test> <path of the file with the list of the IPs to replace in the test pcap file> <path of the file with the list of malicious IPs of test pcap file>")
+        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier> <path of pcap file to test> <path of the file with the list of the IPs to replace in the test pcap file> <path of the file with the list of malicious IPs of test pcap file> <IP of an active host of the P2P network>")
         print("\nUSAGE (REAL-WORLD MODE)")
-        print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture>")
-        print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture> <IP of an active host of the P2P network>\n")
+        print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier>")
+        print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier> <IP of an active host of the P2P network>\n")
         sys.exit(-1)
 
     if (mode == 'test'):
@@ -266,6 +347,9 @@ if __name__ == '__main__':
 
         test_malicious_IPs_list = test_malicious_IPs_list.split('\n')
 
-        AntiBotnet(mode, interface, n_packets, test_pcapfile, ip2replace, test_malicious_IPs_list, target_P2P_IP)
+        print("\nTEST malicious IPs:", test_malicious_IPs_list)
+        print()
+
+        AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, test_pcapfile, IPs2replace_file, test_malicious_IPs_list, target_P2P_IP)
     else:
-        AntiBotnet(mode, interface, n_packets, None, None, None, target_P2P_IP)
+        AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, None, None, None, target_P2P_IP)

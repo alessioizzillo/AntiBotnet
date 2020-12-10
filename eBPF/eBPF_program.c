@@ -65,6 +65,7 @@ int ebpf_program(struct __sk_buff *skb) {
 		packet.tcp_Flags = 128*tcp->flag_cwr+64*tcp->flag_ece+32*tcp->flag_urg+16*tcp->flag_ack+8*tcp->flag_psh+4*tcp->flag_rst+2*tcp->flag_syn+1*tcp->flag_fin;
 		packet.tcp_payload_len = ip->tlen-(ip->hlen+tcp->offset*4);
 		packet.udp_len = 0;
+
 		queue.push(&packet, BPF_EXIST);
 	}
 	else if (packet.protocol == 17){
@@ -74,6 +75,7 @@ int ebpf_program(struct __sk_buff *skb) {
 		packet.tcp_Flags = 0;
 		packet.tcp_payload_len = 0;
 		packet.udp_len = udp->length;
+
 		queue.push(&packet, BPF_EXIST);
 	} 
 	else{

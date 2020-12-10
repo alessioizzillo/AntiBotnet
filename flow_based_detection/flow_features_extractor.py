@@ -199,7 +199,7 @@ def FlowFeaturesExtractor(captured_packets, mode, malicious_IPs_list):
     if mode == 'training':
         print("\nSorting Dataframe...")
 
-    d = d.sort_values(['UFid','Time'])
+    d.sort_values(['UFid','Time'], inplace=True)
 
     if mode == 'training':
         print("\nExtracting Flow Features...")

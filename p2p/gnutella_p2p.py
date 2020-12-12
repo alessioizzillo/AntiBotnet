@@ -8,6 +8,7 @@ import signal
 import ctypes
 from filelock import FileLock
 from uuid import getnode as getmac
+import random
 
 import sys
 import os
@@ -21,14 +22,16 @@ from twisted.internet import reactor, protocol, tcp
 from twisted.protocols import basic
 from twisted.web import server
 from twisted.web.resource import Resource
-
+from readerwriterlock import rwlock
 
 """
 GLOBAL DATA
 """
-connections = []
+lock = rwlock.RWLockFairD()
 bpf_hash_P2P_IPs = None
 GBD_lock = []
+
+connections = []
 listener = None
 nodeID = None
 directory = None
@@ -48,6 +51,7 @@ MAX_CONNS = 10
 UNDER_PROB = 50
 OVER_PROB = 10
 
+
 """
 GNUTELLA TWISTED CLASSES
 """
@@ -63,13 +67,9 @@ class GnutellaProtocol(basic.LineReceiver):
         self.verified = False
     
     def connectionMade(self):
-        global bpf_hash_P2P_IPs
-        global connections
-
         connections.append(self)
         peer = self.transport.getPeer()
         writeLog("Connected to {0}:{1}\n".format(peer.host, peer.port))
-        bpf_hash_P2P_IPs[ctypes.c_uint(ip2int(peer.host))] = ctypes.c_uint(serverPort)
 
         if self.initiator:
             global port
@@ -78,40 +78,35 @@ class GnutellaProtocol(basic.LineReceiver):
         host = self.transport.getHost()
         global IP
         IP = host.host
+
     
     def connectionLost(self, reason):
-        global bpf_hash_P2P_IPs
-        global connections
-
         connections.remove(self)
         peer = self.transport.getPeer()
         writeLog("Disconnected with {0}:{1}\n".format(peer.host, peer.port))
-        del bpf_hash_P2P_IPs[ctypes.c_uint(ip2int(peer.host))]
         makePeerConnection()
         
+
     def dataReceived(self, data):
         peer = self.transport.getPeer()
+        writeLog("\nData received from %s: %s" % (peer.port, data))
         lines = data.decode("utf-8").split(";")
         for line in lines:
             if (len(line) > 0):
                 self.handleMessage(line)
+
     
     def handleMessage(self, data):
-        global connections
-
         peer = self.transport.getPeer()
         if (data.startswith("GNUTELLA CONNECT")):
             self.peerPort = int(data.split('\n')[1])
             writeLog("Received GNUTELLA CONNECT from {0}:{1}\n".format(peer.host, peer.port))
-            if(len(connections) <= MAX_CONNS):
-                global port
-                self.transport.write("GNUTELLA OK\n{0}\n;".format(port).encode("utf-8"))
-                writeLog("Sending GNUTELLA OK to {0}:{1}\n".format(peer.host, peer.port))
-            else:
-                self.transport.write("WE'RE OUT OF NUTELLA\n;".encode("utf-8"))
-                writeLog("Sending WE'RE OUT OF NUTELLA to {0}:{1}\n".format(peer.host, peer.peer))
+            global port
+            self.transport.write("GNUTELLA OK\n{0}\n;".format(port).encode("utf-8"))
+            writeLog("Sending GNUTELLA OK to {0}:{1}\n".format(peer.host, peer.port))
+
         elif (self.initiator and not self.verified):
-            if(data.startswith("GNUTELLA OK")):
+            if (data.startswith("GNUTELLA OK")):
                 self.peerPort = int(data.split('\n')[1])
                 writeLog("Connection with {0}:{1} verified\n".format(peer.host, peer.port))
                 self.verified = True
@@ -120,18 +115,20 @@ class GnutellaProtocol(basic.LineReceiver):
                 writeLog("Connection with {0}:{1} rejected\n".format(peer.host, peer.port))
                 reactor.stop()
         else:
+            writeLog("\nIncoming message: {0}\n".format(data))
             writeLog("\n")
             message = data.split('&', 3)
             msgid = message[0]
             pldescrip = int(message[1])
             ttl = int(message[2])
             payload = message[3]
-            if(pldescrip == 0):
+            if (pldescrip == 0):
                 writeLog("Received PING: msgid={0} ttl={1}\n".format(msgid, ttl))
-                self.handlePing(msgid, ttl)
+                self.handlePing(msgid, ttl, payload)
             elif(pldescrip == 1):
                 writeLog("Received PONG: msgid={0} payload={1}\n".format(msgid, payload))
                 self.handlePong(msgid, payload)
+
     
     def buildHeader(self, descrip, ttl):
         global msgID
@@ -141,49 +138,62 @@ class GnutellaProtocol(basic.LineReceiver):
             msgID = 0
         return "{0}&{1}&{2}&".format(header, descrip, ttl) 
     
-    def sendPing(self, msgid=None, ttl=7):
-        global connections
-
+    def sendPing(self, msgid=None, ttl=7, payload=None):
+        global port
+        IP = self.transport.getHost().host
         if(ttl <= 0):
             return
         if msgid:
-            message = "{0}&{1}&{2}&".format(msgid, "00", ttl)
+            header = "{0}&{1}&{2}&".format(msgid, "00", ttl)
+            message = "{0}{1}".format(header, payload)
             writeLog("Forwarding PING: {0}\n".format(message))
         else:
-            message = self.buildHeader("00", ttl)
+            header = self.buildHeader("00", ttl)
+            message = "{0}{1}&{2}".format(header, port, IP)
             writeLog("Sending PING: {0}\n".format(message))
         message = "{0};".format(message)
         for cn in connections:
-            if(msgid == None or cn != self):
+            if (msgid == None or cn != self):
                 cn.transport.write(message.encode("utf-8"))
     
     def sendPong(self, msgid, payload=None):
-        nfiles = 0
-        nkb = 0
         global port
         IP = self.transport.getHost().host
         header = "{0}&{1}&{2}&".format(msgid, "01", 7)
         if payload:
             message = "{0}{1};".format(header, payload)
             writeLog("Forwarding PONG: {0}\n".format(message))
-        else: 
+        else:
             message = "{0}{1}&{2};".format(header, port, IP)
             writeLog("Sending PONG: {0}\n".format(message))
         global msgRoutes
         msgRoutes[msgid][0].transport.write(message.encode("utf-8"))
     
-    def handlePing(self, msgid, ttl):
+    def handlePing(self, msgid, ttl, payload):
+        IP = self.transport.getHost().host
+        info = payload.split("&")
+        
+        if (info[1] != IP):
+            global bpf_hash_P2P_IPs
+            bpf_hash_P2P_IPs[ctypes.c_uint(ip2int(info[1]))] = ctypes.c_uint(0)
+
         if isValid(msgid):
             return
         global msgRoutes
         msgRoutes[msgid] = (self, time.time())
         self.sendPong(msgid)
-        self.sendPing(msgid, ttl-1)
+        self.sendPing(msgid, ttl-1, payload)
     
     def handlePong(self, msgid, payload):
         global nodeID
         global netData
+        IP = self.transport.getHost().host
         info = payload.split("&")
+        
+        if (info[1] != IP):
+            global bpf_hash_P2P_IPs
+            bpf_hash_P2P_IPs[ctypes.c_uint(ip2int(info[1]))] = ctypes.c_uint(0)
+        
         node_data = (int(info[0]), info[1])
         if info not in netData:
             netData.append(node_data)
@@ -213,15 +223,11 @@ class GnutellaFactory(protocol.ReconnectingClientFactory):
     
     def clientConnectionFailed(self, transport, reason):
         time.sleep(1)
-
-        global netData
-        if len(netData):
-            global connections
-            numConns = len(connections)
-            if numConns == 0:
-                makePeerConnection()
-        else:
-            reactor.connectTCP(transport.host, port, GnutellaFactory(True))
+        writeLog("Retrying connection with %s:%s\n" % (transport.host, transport.port))
+        global connections
+        numConns = len(connections)
+        if numConns == 0:
+            reactor.connectTCP(transport.host, int(transport.port), GnutellaFactory(True))
 
 
 
@@ -293,6 +299,7 @@ def store_traffic(traffic, ip_host):
             GBD_lock.append(ip_host)
 
 
+
 def makePeerConnection(IP=None, port=None):
     global MAX_CONNS
     global netData
@@ -308,7 +315,6 @@ def makePeerConnection(IP=None, port=None):
                 netData.remove(randNode)
             reactor.connectTCP(IP, port, GnutellaFactory(True))
 
-
 def shouldConnect(numConns):
     global MIN_CONNS
     global UNDER_PROB
@@ -319,7 +325,7 @@ def shouldConnect(numConns):
             return True
     elif (prob < OVER_PROB):
         return True
-    return False
+    return False 
 
 
 def cleanPeerList():
@@ -327,7 +333,7 @@ def cleanPeerList():
     global connections
     for conn in connections:
         peer = conn.transport.getPeer()
-        peer_info = (conn.peerPort, peer.host)
+        peer_info = (peer.port, peer.host)
         if peer_info in netData:
             netData.remove(peer_info)
 

@@ -1,5 +1,4 @@
 import socket
-from time import perf_counter
 import signal
 from scapy.all import *
 from scapy.layers.inet import IP, TCP, UDP
@@ -48,14 +47,14 @@ def replay_pcap(pcapfile, IPs2replace_file):
     global target_IPs
 
     with open(IPs2replace_file, "r") as f:
-        target_IPs = f.read().split("\n")[:-1]
+        target_IPs = f.read().split("\n")
+    while ("" in target_IPs):
+        target_IPs.remove("")
     
     print("IPs to replace in the test file:\n", target_IPs)
     print()
-    start_time = perf_counter()
+
     sniff(offline=pcapfile, prn=replay_pkt, store=0)
-    end_time = perf_counter()
-    print("TEST FINISHED! ("+str(end_time-start_time)+")\n")
-    input()
 
     os.kill(os.getppid(), signal.SIGUSR1)
+

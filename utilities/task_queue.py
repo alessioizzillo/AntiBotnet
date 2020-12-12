@@ -11,17 +11,23 @@ class TaskQueue(threading.Thread):
         self.thread_name = thread_name
         self.current_thread = None
         self._stopper = threading.Event()
+        self._stopper_when_empty = threading.Event()
         self.taskqueue = Queue()
         threading.Thread.__init__(self)
     
     def stop(self):
         self._stopper.set()
 
+    def stop_when_empty(self):
+        self._stopper_when_empty.set()
+
     def run(self):
         while not self._stopper.isSet():
             if self.taskqueue.empty():
-                sleep(1)
-                continue
+                if self._stopper_when_empty.isSet():
+                    break
+                else:
+                    continue
             self.current_thread = self.taskqueue.get()
             start_time = perf_counter()
             self.current_thread.start()

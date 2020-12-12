@@ -36,19 +36,26 @@ def signal_handler(signalNumber, frame):
     global IncrementalLearning_threads
     
     if signalNumber == signal.SIGUSR1:
-        os.kill(p2p_process.pid, signal.SIGINT)
-        os.kill(test_process.pid, signal.SIGINT)
-
-    try:
-        p2p_process.join()
-        IncrementalLearning_threads.stop()
-        BotnetDetection_threads.stop()
+        IncrementalLearning_threads.stop_when_empty()
+        BotnetDetection_threads.stop_when_empty()
         IncrementalLearning_threads.join()
         BotnetDetection_threads.join()
+        os.kill(p2p_process.pid, signal.SIGINT)
+        os.kill(test_process.pid, signal.SIGINT)
+        p2p_process.join()
         test_process.join()
-    except:
-        print("EXIT WITH EXCEPTION")
-        pass
+        print("TEST FINISHED!\n")
+
+    else:
+        try:
+            p2p_process.join()
+            IncrementalLearning_threads.stop()
+            BotnetDetection_threads.stop()
+            IncrementalLearning_threads.join()
+            BotnetDetection_threads.join()
+            test_process.join()
+        except:
+            pass
     
     print("\n---ANTIBOTNET (EXIT)---\n")
 
@@ -349,6 +356,8 @@ if __name__ == '__main__':
             test_malicious_IPs_list = malicious_IPs.read()
 
         test_malicious_IPs_list = test_malicious_IPs_list.split('\n')
+        while ("" in test_malicious_IPs_list):
+            test_malicious_IPs_list.remove("")
 
         print("\nTEST malicious IPs:", test_malicious_IPs_list)
         print()

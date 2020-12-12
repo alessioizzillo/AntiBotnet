@@ -55,6 +55,8 @@ class BotnetDetection(threading.Thread):
                 print("  * Response from", ip, ":", response)
             except:
                 print("  * ERROR: POST request to "+ip+" failed!")
+                del bpf_hash_P2P_IPs[ctypes.c_uint(ip2int(ip))]
+
 
         print()
 
@@ -65,7 +67,7 @@ class BotnetDetection(threading.Thread):
 
         self.fbd_exec_time = end_time-start_time
 
-        print("\n\nRESULTS: ", flow_results, "\n")
+        print("\n\nFLOW-BASED RESULTS: ", flow_results, "\n")
 
         self.IncrementalLearning_threads.put(IncrementalLearning(self.mode, self.gbd_n_estimators, self.bpf, self.test_malicious_IPs_list, self.captured_packets, flows, self.flowbased_dataset, self.graphbased_dataset, self.flowbased_dataset_rwlock, self.GraphBasedDetection_lock))
 
@@ -73,7 +75,7 @@ class BotnetDetection(threading.Thread):
 
         sospicious_IPs_list = []
         for i in bpf_hash_sospicious_IPs.items():
-            sospicious_IPs_list.append((i[0].value, i[1].value))
+            sospicious_IPs_list.append((i[0].value, "GBD" if i[1].value == 1 else "FBD"))
 
         self.len_results = len(flow_results)
         for t in flow_results:
@@ -87,10 +89,12 @@ class BotnetDetection(threading.Thread):
                 else:
                     self.n_true_pos += 1
 
-            if (ip2int(t[0]), 0) not in sospicious_IPs_list and (ip2int(t[0]), 1) not in sospicious_IPs_list \
+            if (ip2int(t[0]), "GBD") not in sospicious_IPs_list and (ip2int(t[0]), "FBD") not in sospicious_IPs_list \
                 and t[1] == True:
                 bpf_hash_sospicious_IPs[ctypes.c_uint(ip2int(t[0]))] = ctypes.c_uint(0)
 
-            elif (ip2int(t[0]), 0) in sospicious_IPs_list and t[1] == False:
+            elif (ip2int(t[0]), "FBD") in sospicious_IPs_list and t[1] == False:
                 del bpf_hash_sospicious_IPs[ctypes.c_uint(ip2int(t[0]))]
+        
+        print(sospicious_IPs_list)
 

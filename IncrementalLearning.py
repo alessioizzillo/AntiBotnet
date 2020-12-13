@@ -77,13 +77,17 @@ class IncrementalLearning(threading.Thread):
 
         self.gbd_exec_time = end_time-start_time
         
-        print("\GRAPH-BASED RESULTS: ", graph_results, "\n")
+        print("GRAPH-BASED RESULTS: ", graph_results, "\n")
 
         bpf_hash_sospicious_IPs = self.bpf['sospicious_IPs']
-
         sospicious_IPs_list = []
         for i in bpf_hash_sospicious_IPs.items():
             sospicious_IPs_list.append((i[0].value, "GBD" if i[1].value == 1 else "FBD"))
+
+        bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
+        P2P_IPs_list = []
+        for i in bpf_hash_P2P_IPs.items():
+            P2P_IPs_list.append((i[0].value, "GBD" if i[1].value == 1 else "FBD"))   
 
         self.len_results = len(graph_results)
         for t in graph_results:
@@ -98,12 +102,17 @@ class IncrementalLearning(threading.Thread):
                 else:
                     self.n_true_pos += 1
 
-            if t[1] == True:
+            if t[1] == True and ip2int(t[0]) not in P2P_IPs_list:
                 bpf_hash_sospicious_IPs[ctypes.c_uint(ip2int(t[0]))] = ctypes.c_uint(1)
 
             elif (ip2int(t[0]), "FBD") in sospicious_IPs_list and t[1] == False:
                 del bpf_hash_sospicious_IPs[ctypes.c_uint(ip2int(t[0]))]
-
+        
+        sospicious_IPs_list = []
+        for i in bpf_hash_sospicious_IPs.items():
+            sospicious_IPs_list.append((int2ip(i[0].value), "GBD" if i[1].value == 1 else "FBD"))
+        print("SOSPICIOUS IPs LIST:",sospicious_IPs_list)
+        print()
 
         # print("   * Updating flow-based detection dataset (Incremental Learning)...\n")
         graph_malicious_IPs = []

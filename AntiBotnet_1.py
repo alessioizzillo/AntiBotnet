@@ -22,6 +22,7 @@ if os.path.dirname(os.path.abspath(__file__))+'/test' not in sys.path:
 from replay_pcap import replay_pcap
 
 
+bpf = None
 BotnetDetection_threads = None
 IncrementalLearning_threads = None
 p2p_process = None
@@ -30,6 +31,7 @@ ignored_IPs = ['192.168.1.1']
 
 
 def signal_handler(signalNumber, frame):
+    global bpf
     global p2p_process
     global test_process
     global BotnetDetection_threads
@@ -44,7 +46,17 @@ def signal_handler(signalNumber, frame):
         os.kill(test_process.pid, signal.SIGINT)
         p2p_process.join()
         test_process.join()
+
         print("TEST FINISHED!\n")
+
+        bpf_hash_sospicious_IPs = bpf['sospicious_IPs']
+
+        sospicious_IPs_list = []
+        for i in bpf_hash_sospicious_IPs.items():
+            sospicious_IPs_list.append((int2ip(i[0].value), "GBD" if i[1].value == 1 else "FBD"))
+
+        print("*****TEST RESULTS*****")
+        print(sospicious_IPs_list)
 
     else:
         try:
@@ -77,6 +89,7 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
     manager.start(manager_init)
     GraphBasedDetection_lock = manager.list()
     
+    global bpf
     # Initialize BPF - load source code from 'ebpf/eBPF_program.c.'
     bpf = BPF(src_file=os.path.dirname(os.path.abspath(__file__))+"/eBPF/eBPF_program.c", debug=0)
 
@@ -162,7 +175,7 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
                 k = bpf_queue.pop()
             except KeyError:
                 continue
-            
+
             if (int2ip(k.src_ip) not in ignored_IPs) and (int2ip(k.dst_ip) not in ignored_IPs):
                 if (n == 0):
                     start = k.timestamp

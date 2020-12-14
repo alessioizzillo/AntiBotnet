@@ -6,11 +6,11 @@ if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flow_based_detection.flow_features_extractor import FlowFeaturesExtractor
-from ml.random_forest_classifier import RandomForestClassifier
+from ml.random_forest_classifier import *
 from utilities.network import *
 
 
-def FlowBasedDetection(captured_packets, dataset, fbd_n_estimators):
+def FlowBasedDetection(captured_packets, train_dataset, fbd_n_estimators):
     print("FLOW-BASED DETECTION:")
 
     local_ip = socket.gethostbyname(socket.gethostname())
@@ -18,8 +18,10 @@ def FlowBasedDetection(captured_packets, dataset, fbd_n_estimators):
     print("   * Extracting flow features...")
     flows = FlowFeaturesExtractor(captured_packets, 'predicting', None)
 
+    print("\n   * Training...")
+    classifier = RandomForestClassifier_train(train_dataset, fbd_n_estimators)
     print("\n   * Predicting...")
-    Y_Pred = RandomForestClassifier("proba", flows, dataset, fbd_n_estimators)
+    Y_Pred = RandomForestClassifier_predict("proba", classifier, flows)
 
     proba_results_temp = []
     for i in range(0,len(Y_Pred)):

@@ -11,7 +11,7 @@ if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
 from utilities.network import *
 
 
-def RandomForestClassifier(mode, dataset, train_dataset, n_est):
+def RandomForestClassifier_train(train_dataset, n_est):
     local_ip = socket.gethostbyname(socket.gethostname())
 
     # Load the features and the 'label' from the Training train_dataset
@@ -22,6 +22,12 @@ def RandomForestClassifier(mode, dataset, train_dataset, n_est):
     classifier = sklearn.ensemble.RandomForestClassifier(n_estimators = n_est, criterion = 'entropy', random_state = 0, n_jobs=-1)
     classifier.fit(X_Train,Y_Train)
 
+    del X_Train, Y_Train
+
+    return classifier
+
+
+def RandomForestClassifier_predict(mode, classifier, dataset):
     # Load the features from the dataset captured
     X = dataset.iloc[:, range(0, len(dataset.columns), 1)].values
 
@@ -35,7 +41,6 @@ def RandomForestClassifier(mode, dataset, train_dataset, n_est):
     else:
         Y_Pred = classifier.predict(X)
 
-    del X_Train, Y_Train
     del X, dataset
 
     return Y_Pred

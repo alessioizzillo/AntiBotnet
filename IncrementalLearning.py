@@ -12,14 +12,13 @@ from graph_based_detection.graph_based_detection import GraphBasedDetection
 
 
 class IncrementalLearning(threading.Thread):
-    def __init__(self, mode, gbd_n_estimators, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, graphbased_dataset, flowbased_dataset_rwlock, GraphBasedDetection_lock):
+    def __init__(self, mode, GBD_classifier, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, flowbased_dataset_rwlock, GraphBasedDetection_lock):
         self.mode = mode
-        self.gbd_n_estimators = gbd_n_estimators
         self.bpf = bpf
         self.captured_packets = captured_packets
         self.flows = flows
         self.flowbased_dataset = flowbased_dataset
-        self.graphbased_dataset = graphbased_dataset
+        self.GBD_classifier = GBD_classifier
         self.flowbased_dataset_rwlock = flowbased_dataset_rwlock
         self.GraphBasedDetection_lock = GraphBasedDetection_lock
         self.test_malicious_IPs_list = test_malicious_IPs_list
@@ -39,7 +38,7 @@ class IncrementalLearning(threading.Thread):
 
     def run(self):
         # n = 0
-        # # All P2P hosts must write into shared_traffic/traffic.csv at least
+        # # All P2P hosts must write into global_P2P_traffic/traffic.csv at least
         # # once before Graph detection starts
         # try:
         #     while(n <= self.retry):
@@ -56,19 +55,17 @@ class IncrementalLearning(threading.Thread):
         # except:
         #     pass
 
-        lock = FileLock("shared_traffic/traffic.csv.lock")
+        lock = FileLock("global_P2P_traffic/traffic.csv.lock")
         with lock:
-            self.captured_packets.to_csv("shared_traffic/traffic.csv", mode='a', header=False, index=False)
-            df = pd.read_csv("shared_traffic/traffic.csv")
+            self.captured_packets.to_csv("global_P2P_traffic/traffic.csv", mode='a', header=False, index=False)
+            df = pd.read_csv("global_P2P_traffic/traffic.csv")
             try:    
                 self.GraphBasedDetection_lock[:] = []
             except:
                 pass
             
-        df.to_csv("test_traffic.csv", mode='a', header=False, index=False)
-
         start_time = perf_counter()
-        graph_results = GraphBasedDetection("incremental", df, self.graphbased_dataset, self.gbd_n_estimators)
+        graph_results = GraphBasedDetection("incremental", self.GBD_classifier, df)
         end_time = perf_counter()
 
         self.gbd_exec_time = end_time-start_time

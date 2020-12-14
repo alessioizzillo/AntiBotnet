@@ -15,6 +15,7 @@ from utilities.network import *
 from utilities.task_queue import *
 from p2p.gnutella_p2p import Start_P2P
 from BotnetDetection import BotnetDetection
+from ml.random_forest_classifier import RandomForestClassifier_train
 
 if os.path.dirname(os.path.abspath(__file__))+'/test' not in sys.path:
     sys.path.append(os.path.dirname(os.path.abspath(__file__))+'/test')
@@ -95,8 +96,12 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
 
     print("Connecting to P2P network:")
 
-    if not os.path.isdir(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic"):
-        os.makedirs(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic")
+    if not os.path.isdir(os.path.dirname(os.path.abspath(__file__))+"/global_P2P_traffic"):
+        os.makedirs(os.path.dirname(os.path.abspath(__file__))+"/global_P2P_traffic")
+
+    df_global_P2P_traffic = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', \
+        'EtherType', 'Protocol', 'TCP Flags', 'Length', 'TCP Payload Length', 'UDP Length', 'TTL'])
+    df_global_P2P_traffic.to_csv("global_P2P_traffic/traffic.csv", mode="w", index=False)     
 
     global p2p_process
     p2p_process = Process(target=Start_P2P, args=(GraphBasedDetection_lock, bpf, target_P2P_IP, ))
@@ -141,6 +146,8 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
     flowbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/flow_based_detection/training_dataset/training.hdf5")
     graphbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/graph_based_detection/training_dataset/training.hdf5")
 
+    GBD_classifier = RandomForestClassifier_train(graphbased_dataset, gbd_n_estimators)
+
     global IncrementalLearning_threads
     IncrementalLearning_threads = TaskQueue(mode, "IncrementalLearning")
     IncrementalLearning_threads.start()
@@ -158,11 +165,7 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
 
         df_test_results = pd.DataFrame(columns=['Detection method', 'BotnetDetection  execution time', 'IncrementalLearning execution time'\
             'FlowBasedDetection execution time', 'GraphBasedDetection execution time', 'True Positives', 'True Negatives', 'False Positive', 'False Negative', 'Total predictions'])
-        df_test_results.to_csv("test_results.csv", index=False)
-
-        df_test_traffic = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', \
-            'EtherType', 'Protocol', 'TCP Flags', 'Length', 'TCP Payload Length', 'UDP Length', 'TTL'])
-        df_test_traffic.to_csv("test_traffic.csv", index=False)              
+        df_test_results.to_csv("test_results.csv", index=False)         
 
     flowbased_dataset_rwlock = rwlock.RWLockFairD()
 
@@ -191,9 +194,9 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
 
         # Start a thread to detect the normal and sospicious IPs present in captured traffic
         if mode == 'test':
-            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
+            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, GBD_classifier, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
         else:
-            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, gbd_n_estimators, bpf, None, Packets.copy(), flowbased_dataset, graphbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
+            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, GBD_classifier, bpf, None, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
         Packets.drop(Packets.index, inplace=True)
 
 

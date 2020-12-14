@@ -265,7 +265,7 @@ def store_traffic(traffic, ip_host):
     t = traffic.replace("\\\"", "\"")
     df = pd.read_json(t)
 
-    path_traffic_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+"/shared_traffic"
+    path_traffic_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+"/global_P2P_traffic"
 
     lock = FileLock(path_traffic_dir+"/traffic.csv.lock")
     with lock:

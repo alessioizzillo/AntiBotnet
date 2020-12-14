@@ -5,12 +5,12 @@ import socket
 if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from ml.random_forest_classifier import *
+from ml.random_forest_classifier import RandomForestClassifier_predict
 from graph_based_detection.graph_features_extractor import GraphFeaturesExtractor
+from utilities.network import *
 
 
-
-def GraphBasedDetection(mode, traffic_file, train_dataset, gbd_n_estimators):
+def GraphBasedDetection(mode, GBD_classifier, traffic_file):
     if mode == 'oracle':
         print("GRAPH-BASED DETECTION:")
         print("   * Extracting graph features...")
@@ -21,7 +21,7 @@ def GraphBasedDetection(mode, traffic_file, train_dataset, gbd_n_estimators):
     else:
         dataset = GraphFeaturesExtractor('predicting', traffic_file, None, verbose=False)
 
-    Y_Pred = RandomForestClassifier("normal", dataset, train_dataset, gbd_n_estimators)
+    Y_Pred = RandomForestClassifier_predict("normal", GBD_classifier, dataset)
 
     results = []
     for i in range(0,len(Y_Pred)):

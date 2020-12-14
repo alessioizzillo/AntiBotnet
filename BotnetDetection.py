@@ -53,8 +53,8 @@ class BotnetDetection(threading.Thread):
                 print("  * Sending POST request to:", url)
                 response = requests.post(url, json=self.captured_packets.to_json())
                 print("  * Response from", ip, ":", response)
-            except:
-                print("  * ERROR: POST request to "+ip+" failed!")
+            except Exception as e:
+                print("  * ERROR ("+str(e)+"): POST request to "+ip+" failed!")
                 del bpf_hash_P2P_IPs[ctypes.c_uint(ip2int(ip))]
 
 
@@ -79,7 +79,7 @@ class BotnetDetection(threading.Thread):
         bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
         P2P_IPs_list = []
         for i in bpf_hash_P2P_IPs.items():
-            P2P_IPs_list.append((i[0].value, "GBD" if i[1].value == 1 else "FBD"))        
+            P2P_IPs_list.append(i[0].value)        
 
         self.len_results = len(flow_results)
         for t in flow_results:

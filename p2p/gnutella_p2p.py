@@ -53,18 +53,16 @@ OVER_PROB = 10
 
 
 """
-GNUTELLA TWISTED CLASSES
+p2p TWISTED CLASSES
 """
-class GnutellaProtocol(basic.LineReceiver):
+class p2pProtocol(basic.LineReceiver):
     def __init__(self):
         self.output = None
         self.normalizeNewlines = True
         self.initiator = False
-        self.verified = True
     
     def setInitiator(self):
         self.initiator = True
-        self.verified = False
     
     def connectionMade(self):
         connections.append(self)
@@ -72,9 +70,7 @@ class GnutellaProtocol(basic.LineReceiver):
         writeLog("Connected to {0}:{1}\n".format(peer.host, peer.port))
 
         if self.initiator:
-            global port
-            self.transport.write("GNUTELLA CONNECT/0.4\n{0}\n;".format(port).encode("utf-8"))
-            writeLog("Sending GNUTELLA CONNECT to {0}:{1}\n".format(peer.host, peer.port))
+            self.sendPing()
         host = self.transport.getHost()
         global IP
         IP = host.host
@@ -90,44 +86,30 @@ class GnutellaProtocol(basic.LineReceiver):
     def dataReceived(self, data):
         peer = self.transport.getPeer()
         writeLog("\nData received from %s: %s" % (peer.port, data))
-        lines = data.decode("utf-8").split(";")
-        for line in lines:
-            if (len(line) > 0):
-                self.handleMessage(line)
+        try:
+            lines = data.decode("utf-8").split(";")
+            for line in lines:
+                if (len(line) > 0):
+                    self.handleMessage(line)
+        except Exception as e:
+            print("P2P ERROR:", str(e))
 
     
     def handleMessage(self, data):
         peer = self.transport.getPeer()
-        if (data.startswith("GNUTELLA CONNECT")):
-            self.peerPort = int(data.split('\n')[1])
-            writeLog("Received GNUTELLA CONNECT from {0}:{1}\n".format(peer.host, peer.port))
-            global port
-            self.transport.write("GNUTELLA OK\n{0}\n;".format(port).encode("utf-8"))
-            writeLog("Sending GNUTELLA OK to {0}:{1}\n".format(peer.host, peer.port))
-
-        elif (self.initiator and not self.verified):
-            if (data.startswith("GNUTELLA OK")):
-                self.peerPort = int(data.split('\n')[1])
-                writeLog("Connection with {0}:{1} verified\n".format(peer.host, peer.port))
-                self.verified = True
-                self.sendPing()
-            else:
-                writeLog("Connection with {0}:{1} rejected\n".format(peer.host, peer.port))
-                reactor.stop()
-        else:
-            writeLog("\nIncoming message: {0}\n".format(data))
-            writeLog("\n")
-            message = data.split('&', 3)
-            msgid = message[0]
-            pldescrip = int(message[1])
-            ttl = int(message[2])
-            payload = message[3]
-            if (pldescrip == 0):
-                writeLog("Received PING: msgid={0} ttl={1}\n".format(msgid, ttl))
-                self.handlePing(msgid, ttl, payload)
-            elif(pldescrip == 1):
-                writeLog("Received PONG: msgid={0} payload={1}\n".format(msgid, payload))
-                self.handlePong(msgid, payload)
+        writeLog("\nIncoming message: {0}\n".format(data))
+        writeLog("\n")
+        message = data.split('&', 3)
+        msgid = message[0]
+        pldescrip = int(message[1])
+        ttl = int(message[2])
+        payload = message[3]
+        if (pldescrip == 0):
+            writeLog("Received PING: msgid={0} ttl={1}\n".format(msgid, ttl))
+            self.handlePing(msgid, ttl, payload)
+        elif(pldescrip == 1):
+            writeLog("Received PONG: msgid={0} payload={1}\n".format(msgid, payload))
+            self.handlePong(msgid, payload)
 
     
     def buildHeader(self, descrip, ttl):
@@ -138,7 +120,7 @@ class GnutellaProtocol(basic.LineReceiver):
             msgID = 0
         return "{0}&{1}&{2}&".format(header, descrip, ttl) 
     
-    def sendPing(self, msgid=None, ttl=7, payload=None):
+    def sendPing(self, msgid=None, ttl=3, payload=None):
         global port
         IP = self.transport.getHost().host
         if(ttl <= 0):
@@ -204,14 +186,14 @@ class GnutellaProtocol(basic.LineReceiver):
             makePeerConnection()
 
 
-class GnutellaFactory(protocol.ReconnectingClientFactory):
+class p2pFactory(protocol.ReconnectingClientFactory):
     def __init__(self, isInitiator=False):
         self.initiator = False
         if isInitiator:
             self.initiator = True
     
     def buildProtocol(self, addr):
-        prot = GnutellaProtocol()
+        prot = p2pProtocol()
         if self.initiator:
             prot.setInitiator()
         return prot
@@ -227,7 +209,7 @@ class GnutellaFactory(protocol.ReconnectingClientFactory):
         global connections
         numConns = len(connections)
         if numConns == 0:
-            reactor.connectTCP(transport.host, int(transport.port), GnutellaFactory(True))
+            reactor.connectTCP(transport.host, int(transport.port), p2pFactory(True))
 
 
 
@@ -281,19 +263,13 @@ def store_traffic(traffic, ip_host):
     global GBD_lock
 
     t = traffic.replace("\\\"", "\"")
-    df_temp = pd.read_json(t)
+    df = pd.read_json(t)
 
     path_traffic_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+"/shared_traffic"
 
     lock = FileLock(path_traffic_dir+"/traffic.csv.lock")
     with lock:
-        try:
-            df = pd.read_csv(path_traffic_dir+"/traffic.csv")
-            df = pd.concat([df, df_temp], ignore_index=True)
-            df = df.sort_values(['Time'])
-        except:
-            df = df_temp
-        df.to_csv(path_traffic_dir+"/traffic.csv", index=False)
+        df.to_csv(path_traffic_dir+"/traffic.csv", mode='a', header=False, index=False)
         
         if ip_host not in GBD_lock:
             GBD_lock.append(ip_host)
@@ -313,7 +289,7 @@ def makePeerConnection(IP=None, port=None):
                 IP = randNode[1] 
                 port = randNode[0]
                 netData.remove(randNode)
-            reactor.connectTCP(IP, port, GnutellaFactory(True))
+            reactor.connectTCP(IP, port, p2pFactory(True))
 
 def shouldConnect(numConns):
     global MIN_CONNS
@@ -414,9 +390,9 @@ def Start_P2P(GraphBasedDetection_lock, bpf, targetIP):
         #Set up Twisted clients
         if targetIP != None and targetIP != socket.gethostbyname(socket.gethostname()):
             printLine("  * Connecting to: {0}".format(targetIP))
-            connector = reactor.connectTCP(targetIP, targetPort, GnutellaFactory(initiating))
+            connector = reactor.connectTCP(targetIP, targetPort, p2pFactory(initiating))
         
-        listener = GnutellaFactory()
+        listener = p2pFactory()
         usedPort = CustomPort(8000, listener, reuse=True)
         usedPort.startListening()
 

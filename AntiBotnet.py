@@ -98,6 +98,10 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
     if not os.path.isdir(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic"):
         os.makedirs(os.path.dirname(os.path.abspath(__file__))+"/shared_traffic")
 
+    df_shared_traffic = pd.DataFrame(columns=['Time', 'Source', 'Destination', 'Source Port', 'Destination Port', \
+        'EtherType', 'Protocol', 'TCP Flags', 'Length', 'TCP Payload Length', 'UDP Length', 'TTL'])
+    df_shared_traffic.to_csv("shared_traffic/traffic.csv", mode="w", index=False)     
+
     global p2p_process
     p2p_process = Process(target=Start_P2P, args=(GraphBasedDetection_lock, bpf, target_P2P_IP, ))
     p2p_process.start()

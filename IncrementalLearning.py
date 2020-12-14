@@ -38,37 +38,33 @@ class IncrementalLearning(threading.Thread):
 
 
     def run(self):
-        n = 0
-        # All P2P hosts must write into shared_traffic/traffic.csv at least once before Graph detection starts
-        try:
-            while(n <= self.retry):
-                cont = 1
-                bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
-                for i in bpf_hash_P2P_IPs.items():
-                    if int2ip(i[0].value) not in self.GraphBasedDetection_lock:
-                        cont = 0
-                        break
-                if cont:
-                    break
-                time.sleep(1)
-                n += 1
-        except:
-            pass
+        # n = 0
+        # # All P2P hosts must write into shared_traffic/traffic.csv at least
+        # # once before Graph detection starts
+        # try:
+        #     while(n <= self.retry):
+        #         cont = 1
+        #         bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
+        #         for i in bpf_hash_P2P_IPs.items():
+        #             if int2ip(i[0].value) not in self.GraphBasedDetection_lock:
+        #                 cont = 0
+        #                 break
+        #         if cont:
+        #             break
+        #         time.sleep(1)
+        #         n += 1
+        # except:
+        #     pass
 
         lock = FileLock("shared_traffic/traffic.csv.lock")
         with lock:
-            try:
-                df = pd.read_csv("shared_traffic/traffic.csv")
-                df = df.append(self.captured_packets, ignore_index=True)
-                df.sort_values(['Time'], inplace=True)
-                open("shared_traffic/traffic.csv", "w")
-            except:
-                df = self.captured_packets
+            self.captured_packets.to_csv("shared_traffic/traffic.csv", mode='a', header=False, index=False)
+            df = pd.read_csv("shared_traffic/traffic.csv")
             try:    
                 self.GraphBasedDetection_lock[:] = []
             except:
                 pass
-        
+            
         df.to_csv("test_traffic.csv", mode='a', header=False, index=False)
 
         start_time = perf_counter()
@@ -87,7 +83,7 @@ class IncrementalLearning(threading.Thread):
         bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
         P2P_IPs_list = []
         for i in bpf_hash_P2P_IPs.items():
-            P2P_IPs_list.append((i[0].value, "GBD" if i[1].value == 1 else "FBD"))   
+            P2P_IPs_list.append(i[0].value)   
 
         self.len_results = len(graph_results)
         for t in graph_results:
@@ -117,7 +113,7 @@ class IncrementalLearning(threading.Thread):
         # print("   * Updating flow-based detection dataset (Incremental Learning)...\n")
         graph_malicious_IPs = []
         for i in graph_results:
-            if i[1] == True:
+            if i[1] == True and ip2int(i[0]) not in P2P_IPs_list:
                 graph_malicious_IPs.append(ip2int(i[0]))
 
         self.flows['Label'] = self.flows.apply(lambda x: 1 if float(x['SrcIP']) in graph_malicious_IPs or \

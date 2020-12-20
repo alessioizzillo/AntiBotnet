@@ -70,10 +70,10 @@ class BotnetDetection(threading.Thread):
 
         self.IncrementalLearning_threads.put(IncrementalLearning(self.mode, self.GBD_classifier, self.bpf, self.test_malicious_IPs_list, self.captured_packets, flows, self.flowbased_dataset, self.flowbased_dataset_rwlock, self.GraphBasedDetection_lock))
 
-        bpf_hash_sospicious_IPs = self.bpf['sospicious_IPs']
-        sospicious_IPs_list = []
-        for i in bpf_hash_sospicious_IPs.items():
-            sospicious_IPs_list.append((i[0].value, "GBD" if i[1].value == 1 else "FBD"))
+        bpf_hash_suspicious_IPs = self.bpf['suspicious_IPs']
+        suspicious_IPs_list = []
+        for i in bpf_hash_suspicious_IPs.items():
+            suspicious_IPs_list.append((i[0].value, "GBD" if i[1].value == 1 else "FBD"))
         
         bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
         P2P_IPs_list = []
@@ -92,16 +92,16 @@ class BotnetDetection(threading.Thread):
                 else:
                     self.n_true_pos += 1
 
-            if (ip2int(t[0]), "GBD") not in sospicious_IPs_list and (ip2int(t[0]), "FBD") not in sospicious_IPs_list \
+            if (ip2int(t[0]), "GBD") not in suspicious_IPs_list and (ip2int(t[0]), "FBD") not in suspicious_IPs_list \
                 and t[1] == True and ip2int(t[0]) not in P2P_IPs_list:
-                bpf_hash_sospicious_IPs[ctypes.c_uint(ip2int(t[0]))] = ctypes.c_uint(0)
+                bpf_hash_suspicious_IPs[ctypes.c_uint(ip2int(t[0]))] = ctypes.c_uint(0)
 
-            elif (ip2int(t[0]), "FBD") in sospicious_IPs_list and t[1] == False:
-                del bpf_hash_sospicious_IPs[ctypes.c_uint(ip2int(t[0]))]
+            elif (ip2int(t[0]), "FBD") in suspicious_IPs_list and t[1] == False:
+                del bpf_hash_suspicious_IPs[ctypes.c_uint(ip2int(t[0]))]
         
-        sospicious_IPs_list = []
-        for i in bpf_hash_sospicious_IPs.items():
-            sospicious_IPs_list.append((int2ip(i[0].value), "GBD" if i[1].value == 1 else "FBD"))
-        print("SOSPICIOUS IPs LIST:",sospicious_IPs_list)
+        suspicious_IPs_list = []
+        for i in bpf_hash_suspicious_IPs.items():
+            suspicious_IPs_list.append((int2ip(i[0].value), "GBD" if i[1].value == 1 else "FBD"))
+        print("suspicious IPs LIST:",suspicious_IPs_list)
         print()
 

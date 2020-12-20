@@ -10,7 +10,7 @@ if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
 
 from utilities.network import *
 
-target_IPs = []
+IP2replace = None
 # n = 0
 
 
@@ -19,39 +19,47 @@ def signal_handler(signalNumber, frame):
 
 
 def replay_pkt(pkt):
-    global target_IPs
+    global IP2replace
 
     host_IP = socket.gethostbyname(socket.gethostname())
 
     if (pkt.haslayer(IP) and (pkt.haslayer(TCP) or pkt.haslayer(UDP))):
         if (pkt[IP].src == host_IP or pkt[IP].dst == host_IP):
-            sendp(pkt, verbose=False)
+            try:
+                sendp(pkt, verbose=False)
+            except Exception as e:
+                print("***ERROR sendp: "+str(e)+" ***\n")
 
-    if target_IPs != None:
+    if IP2replace != None:
         if (pkt.haslayer(IP) and (pkt.haslayer(TCP) or pkt.haslayer(UDP)) and \
-            (pkt[IP].src in target_IPs or pkt[IP].dst in target_IPs)):
+            (pkt[IP].src == IP2replace or pkt[IP].dst == IP2replace)):
 
-            if pkt[IP].src in target_IPs:
+            if pkt[IP].src == IP2replace:
                 pkt[IP].src = host_IP
 
-            if pkt[IP].dst in target_IPs:
+            if pkt[IP].dst == IP2replace:
                 pkt[IP].dst = host_IP
 
-            sendp(pkt, verbose=False)
+            try:
+                sendp(pkt, verbose=False)
+            except Exception as e:
+                print("***ERROR sendp: "+str(e)+" ***\n")
 
 
-def replay_pcap(pcapfile, IPs2replace_file):
+def replay_pcap(pcapfile, IPs2replace_file, IP2replace_pos):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTSTP, signal_handler)
     
-    global target_IPs
+    global IP2replace
 
     with open(IPs2replace_file, "r") as f:
-        target_IPs = f.read().split("\n")
-    while ("" in target_IPs):
-        target_IPs.remove("")
+        IPs2replace_list = f.read().split("\n")
+    while ("" in IPs2replace_list):
+        IPs2replace_list.remove("")
     
-    print("IPs to replace in the test file:\n", target_IPs)
+    IP2replace = IPs2replace_list[IP2replace_pos]
+
+    print("IP to replace in the test file: "+IP2replace+" (pos: "+str(IP2replace_pos)+")")
     print()
 
     sniff(offline=pcapfile, prn=replay_pkt, store=0)

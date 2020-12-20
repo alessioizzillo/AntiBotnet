@@ -22,7 +22,7 @@ struct Packet {
 
 BPF_QUEUE(local_ip, u32, 1);
 BPF_QUEUE(queue, struct Packet, 1024);
-BPF_HASH(sospicious_IPs, u32, u32);
+BPF_HASH(suspicious_IPs, u32, u32);
 BPF_HASH(P2P_IPs, u32, u32);
 
 
@@ -100,12 +100,12 @@ int ebpf_program(struct __sk_buff *skb) {
 	}
 
 
-	if (packet.src_ip == localIP && packet.dst_ip != localIP && sospicious_IPs.lookup(&packet.dst_ip) != NULL){
-		bpf_trace_printk("BLOCKED packet: 'dst_ip' in 'sospicious_IPs' hash\n");
+	if (packet.src_ip == localIP && packet.dst_ip != localIP && suspicious_IPs.lookup(&packet.dst_ip) != NULL){
+		bpf_trace_printk("BLOCKED packet: 'dst_ip' in 'suspicious_IPs' hash\n");
 		return 0;
 	}
-	else if (packet.src_ip != localIP && packet.dst_ip == localIP && sospicious_IPs.lookup(&packet.src_ip) != NULL){
-		bpf_trace_printk("BLOCKED packet: 'src_ip' in 'sospicious_IPs' hash\n");
+	else if (packet.src_ip != localIP && packet.dst_ip == localIP && suspicious_IPs.lookup(&packet.src_ip) != NULL){
+		bpf_trace_printk("BLOCKED packet: 'src_ip' in 'suspicious_IPs' hash\n");
 		return 0;
 	}
 	else{

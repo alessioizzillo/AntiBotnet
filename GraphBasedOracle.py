@@ -4,6 +4,7 @@ import pandas as pd
 from time import perf_counter
 
 from graph_based_detection.graph_based_detection import GraphBasedDetection
+from ml.random_forest_classifier import RandomForestClassifier_train
 
 
 if __name__ == '__main__':
@@ -27,7 +28,8 @@ if __name__ == '__main__':
         gbd_n_estimators = int(sys.argv[4])
 
         start_time = perf_counter()
-        results = GraphBasedDetection("oracle", df, training_dataset, gbd_n_estimators)
+        GBD_classifier = RandomForestClassifier_train(training_dataset, gbd_n_estimators)
+        results = GraphBasedDetection("oracle", GBD_classifier, df)
         end_time = perf_counter()
         
         len_results = len(results)

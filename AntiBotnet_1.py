@@ -41,9 +41,11 @@ def signal_handler(signalNumber, frame):
     global flowbased_dataset
     
     if signalNumber == signal.SIGUSR1:
-        IncrementalLearning_threads.stop_when_empty()
+        if IncrementalLearning_threads != None:
+            IncrementalLearning_threads.stop_when_empty()
         BotnetDetection_threads.stop_when_empty()
-        IncrementalLearning_threads.join()
+        if IncrementalLearning_threads != None:
+            IncrementalLearning_threads.join()
         BotnetDetection_threads.join()
         os.kill(p2p_process.pid, signal.SIGINT)
         os.kill(test_process.pid, signal.SIGINT)
@@ -64,9 +66,11 @@ def signal_handler(signalNumber, frame):
     else:
         try:
             p2p_process.join()
-            IncrementalLearning_threads.stop()
+            if IncrementalLearning_threads != None:
+                IncrementalLearning_threads.stop()
             BotnetDetection_threads.stop()
-            IncrementalLearning_threads.join()
+            if IncrementalLearning_threads != None:
+                IncrementalLearning_threads.join()
             BotnetDetection_threads.join()
             test_process.join()
         except:
@@ -151,24 +155,25 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
     flowbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/flow_based_detection/training_dataset/training.hdf5")
     graphbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/graph_based_detection/training_dataset/training.hdf5")
 
-    GBD_classifier = RandomForestClassifier_train(graphbased_dataset, gbd_n_estimators)
+    if (mode != 'test_no_gbd'):
+        GBD_classifier = RandomForestClassifier_train(graphbased_dataset, gbd_n_estimators)
 
-    global IncrementalLearning_threads
-    IncrementalLearning_threads = TaskQueue(mode, "IncrementalLearning")
-    IncrementalLearning_threads.start()
+        global IncrementalLearning_threads
+        IncrementalLearning_threads = TaskQueue(mode, "IncrementalLearning")
+        IncrementalLearning_threads.start()
 
     global BotnetDetection_threads
     BotnetDetection_threads = TaskQueue(mode, "BotnetDetection")
     BotnetDetection_threads.start()
 
-    if (mode == 'test'):
+    if (mode == 'test' or mode == 'test_no_gbd'):
         global test_process
         test_process = Process(target=replay_pcap, args=(test_pcapfile, IPs2replace_file, IP2replace_pos))
         test_process.start()
 
         signal.signal(signal.SIGUSR1, signal_handler)
 
-        df_test_results = pd.DataFrame(columns=['Detection method', 'BotnetDetection  execution time', 'IncrementalLearning execution time'\
+        df_test_results = pd.DataFrame(columns=['Detection method', 'BotnetDetection  execution time', 'IncrementalLearning execution time',\
             'FlowBasedDetection execution time', 'GraphBasedDetection execution time', 'True Positives', 'True Negatives', 'False Positive', 'False Negative', 'Total predictions'])
         df_test_results.to_csv("test_results.csv", index=False)          
 
@@ -200,6 +205,8 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
         # Start a thread to detect the normal and suspicious IPs present in captured traffic
         if mode == 'test':
             BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, GBD_classifier, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
+        elif mode == 'test_no_gbd':
+            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, None, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, None, flowbased_dataset_rwlock, None))
         else:
             BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, GBD_classifier, bpf, None, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock))
         Packets.drop(Packets.index, inplace=True)
@@ -214,7 +221,7 @@ if __name__ == '__main__':
     else:
         error = 1
 
-    if error == 0 and mode == 'test' or mode == 'real-world':
+    if error == 0 and (mode == 'test' or mode == 'test_no_gbd' or mode == 'real-world'):
         if (len(sys.argv) == 6):
             interface = sys.argv[2]
             try:
@@ -275,14 +282,14 @@ if __name__ == '__main__':
 
     if error:
         print("\nUSAGE (TEST MODE)")
-        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier>")
-        print("sudo python3 AntiBotnet.py test <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier> <IP of an active host of the P2P network>")
+        print("sudo python3 AntiBotnet.py test(_no_gbd) <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier>")
+        print("sudo python3 AntiBotnet.py test(_no_gbd) <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier> <IP of an active host of the P2P network>")
         print("\nUSAGE (REAL-WORLD MODE)")
         print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier>")
         print("sudo python3 AntiBotnet.py real-world <interface> <number of packets to capture> <n estimators Flow-based RF Classifier> <n estimators Graph-based RF Classifier> <IP of an active host of the P2P network>\n")
         sys.exit(-1)
 
-    if mode == 'test':
+    if mode == 'test' or mode == 'test_no_gbd':
         print("\nPut the path of the pcap file to test:")
         test_pcapfile = input()
         while not os.path.exists(test_pcapfile):

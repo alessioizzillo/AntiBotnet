@@ -35,7 +35,7 @@ class TaskQueue(threading.Thread):
                 self.current_thread.join()
                 end_time = perf_counter()
 
-                if self.mode == 'test' and self.thread_name == 'BotnetDetection':     
+                if (self.mode == 'test' or self.mode == 'test_no_gbd') and self.thread_name == 'BotnetDetection':     
                     with open("test_results.csv", 'a+', newline='') as write_obj:
                         csv_writer = writer(write_obj)
                         csv_writer.writerow(["FBD", end_time-start_time, -1, \

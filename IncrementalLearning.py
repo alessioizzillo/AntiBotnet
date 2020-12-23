@@ -12,7 +12,7 @@ from graph_based_detection.graph_based_detection import GraphBasedDetection
 
 
 class IncrementalLearning(threading.Thread):
-    def __init__(self, mode, GBD_classifier, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, flowbased_dataset_rwlock, GraphBasedDetection_lock):
+    def __init__(self, mode, GBD_classifier, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, flowbased_dataset_rwlock):
         self.mode = mode
         self.bpf = bpf
         self.captured_packets = captured_packets
@@ -20,7 +20,6 @@ class IncrementalLearning(threading.Thread):
         self.flowbased_dataset = flowbased_dataset
         self.GBD_classifier = GBD_classifier
         self.flowbased_dataset_rwlock = flowbased_dataset_rwlock
-        self.GraphBasedDetection_lock = GraphBasedDetection_lock
         self.test_malicious_IPs_list = test_malicious_IPs_list
 
         self.retry = 5
@@ -37,32 +36,10 @@ class IncrementalLearning(threading.Thread):
 
 
     def run(self):
-        # n = 0
-        # # All P2P hosts must write into global_P2P_traffic/traffic.csv at least
-        # # once before Graph detection starts
-        # try:
-        #     while(n <= self.retry):
-        #         cont = 1
-        #         bpf_hash_P2P_IPs = self.bpf['P2P_IPs']
-        #         for i in bpf_hash_P2P_IPs.items():
-        #             if int2ip(i[0].value) not in self.GraphBasedDetection_lock:
-        #                 cont = 0
-        #                 break
-        #         if cont:
-        #             break
-        #         time.sleep(1)
-        #         n += 1
-        # except:
-        #     pass
-
         lock = FileLock("global_P2P_traffic/traffic.csv.lock")
         with lock:
             self.captured_packets.to_csv("global_P2P_traffic/traffic.csv", mode='a', header=False, index=False)
             df = pd.read_csv("global_P2P_traffic/traffic.csv")
-            try:    
-                self.GraphBasedDetection_lock[:] = []
-            except:
-                pass
             
         start_time = perf_counter()
         graph_results = GraphBasedDetection("incremental", self.GBD_classifier, df)

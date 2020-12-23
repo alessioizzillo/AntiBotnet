@@ -29,7 +29,6 @@ GLOBAL DATA
 """
 lock = rwlock.RWLockFairD()
 bpf_hash_P2P_IPs = None
-GBD_lock = []
 
 connections = []
 listener = None
@@ -260,8 +259,6 @@ GLOBAL HELPER FUNCTIONS
 """
 
 def store_traffic(traffic, ip_host):
-    global GBD_lock
-
     t = traffic.replace("\\\"", "\"")
     df = pd.read_json(t)
 
@@ -270,9 +267,6 @@ def store_traffic(traffic, ip_host):
     lock = FileLock(path_traffic_dir+"/traffic.csv.lock")
     with lock:
         df.to_csv(path_traffic_dir+"/traffic.csv", mode='a', header=False, index=False)
-        
-        if ip_host not in GBD_lock:
-            GBD_lock.append(ip_host)
 
 
 
@@ -339,7 +333,7 @@ def isValid(msgid):
 """
 MAIN FUNCTION
 """
-def Start_P2P(GraphBasedDetection_lock, bpf, targetIP):
+def Start_P2P(bpf, targetIP):
     global logFile
     global logPath
     global directory
@@ -349,7 +343,6 @@ def Start_P2P(GraphBasedDetection_lock, bpf, targetIP):
     global nodeID
     global serverPort
     global bpf_hash_P2P_IPs
-    global GBD_lock
 
     def signal_handler(signalNumber, frame):
         try:
@@ -373,7 +366,6 @@ def Start_P2P(GraphBasedDetection_lock, bpf, targetIP):
     directory = os.path.dirname(os.path.abspath(__file__))+"/log"
     bpf_hash_P2P_IPs = bpf['P2P_IPs']
     bpf_hash_P2P_IPs.clear()
-    GBD_lock = GraphBasedDetection_lock
 
 
     if directory:

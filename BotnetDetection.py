@@ -11,7 +11,7 @@ from IncrementalLearning import IncrementalLearning
 
 
 class BotnetDetection(threading.Thread):
-    def __init__(self, mode, fbd_n_estimators, GBD_classifier, bpf, test_malicious_IPs_list, captured_packets, flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock, GraphBasedDetection_lock):
+    def __init__(self, mode, fbd_n_estimators, GBD_classifier, bpf, test_malicious_IPs_list, captured_packets, flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock):
         self.mode = mode
         self.fbd_n_estimators = fbd_n_estimators
         self.GBD_classifier = GBD_classifier
@@ -20,7 +20,6 @@ class BotnetDetection(threading.Thread):
         self.flowbased_dataset = flowbased_dataset
         self.IncrementalLearning_threads = IncrementalLearning_threads
         self.flowbased_dataset_rwlock = flowbased_dataset_rwlock
-        self.GraphBasedDetection_lock = GraphBasedDetection_lock
         self.test_malicious_IPs_list = test_malicious_IPs_list
         self.p2p_IPs_list = []
 
@@ -69,7 +68,7 @@ class BotnetDetection(threading.Thread):
         print("\n\nFLOW-BASED RESULTS: ", flow_results, "\n")
 
         if self.mode != 'test_no_gbd':
-            self.IncrementalLearning_threads.put(IncrementalLearning(self.mode, self.GBD_classifier, self.bpf, self.test_malicious_IPs_list, self.captured_packets, flows, self.flowbased_dataset, self.flowbased_dataset_rwlock, self.GraphBasedDetection_lock))
+            self.IncrementalLearning_threads.put(IncrementalLearning(self.mode, self.GBD_classifier, self.bpf, self.test_malicious_IPs_list, self.captured_packets, flows, self.flowbased_dataset, self.flowbased_dataset_rwlock))
 
         bpf_hash_suspicious_IPs = self.bpf['suspicious_IPs']
         suspicious_IPs_list = []

@@ -34,7 +34,6 @@ int ebpf_program(struct __sk_buff *skb) {
 	struct udp_t *udp = NULL;
 	u8 *cursor = 0;
 	u32 localIP;
-	u32 *P2P_port;
 
 	local_ip.peek(&localIP);
 

@@ -13,7 +13,7 @@ from readerwriterlock import rwlock
 
 from utilities.network import *
 from utilities.task_queue import *
-from p2p.gnutella_p2p import Start_P2P
+from p2p.p2p import Start_P2P
 from BotnetDetection import BotnetDetection
 from ml.random_forest_classifier import RandomForestClassifier_train
 
@@ -155,7 +155,7 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
     flowbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/flow_based_detection/training_dataset/training.hdf5")
     graphbased_dataset = pd.read_hdf(os.path.dirname(os.path.abspath(__file__))+"/graph_based_detection/training_dataset/training.hdf5")
 
-    if (mode != 'test_no_gbd'):
+    if (mode != 'test_no_incremental_learning'):
         GBD_classifier = RandomForestClassifier_train(graphbased_dataset, gbd_n_estimators)
 
         global IncrementalLearning_threads
@@ -166,20 +166,22 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
     BotnetDetection_threads = TaskQueue(mode, "BotnetDetection")
     BotnetDetection_threads.start()
 
-    if (mode == 'test' or mode == 'test_no_gbd'):
+    if (mode == 'test' or mode == 'test_no_incremental_learning'):
         global test_process
         test_process = Process(target=replay_pcap, args=(test_pcapfile, IPs2replace_file, IP2replace_pos))
         test_process.start()
 
         signal.signal(signal.SIGUSR1, signal_handler)
 
-        df_test_results = pd.DataFrame(columns=['Detection method', 'BotnetDetection  execution time', 'IncrementalLearning execution time',\
+        df_test_results = pd.DataFrame(columns=['Timestamp', 'Detection method', 'BotnetDetection  execution time', 'IncrementalLearning execution time',\
             'FlowBasedDetection execution time', 'GraphBasedDetection execution time', 'True Positives', 'True Negatives', 'False Positive', 'False Negative', 'Total predictions'])
         df_test_results.to_csv("test_results.csv", index=False)          
 
     flowbased_dataset_rwlock = rwlock.RWLockFairD()
 
     print("Started to capture packets...\n")
+    start_epoch = time()
+    start = None
     while 1:
         n = 0
         while n < n_packets:
@@ -190,11 +192,11 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
                 continue
 
             if (int2ip(k.src_ip) not in ignored_IPs) and (int2ip(k.dst_ip) not in ignored_IPs):
-                if (n == 0):
+                if (start == None):
                     start = k.timestamp
 
                 # Compute the timestamp (in seconds) and add it to Unix epoch
-                ts = (k.timestamp-start)/1000000000+time()
+                ts = (k.timestamp-start)/1000000000+start_epoch
 
                 # Update the Dataframe of the captured packets
                 Packets.loc[len(Packets)] = [ts, k.src_ip, k.dst_ip, k.src_port, \
@@ -204,11 +206,11 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
 
         # Start a thread to detect the normal and suspicious IPs present in captured traffic
         if mode == 'test':
-            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, GBD_classifier, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
-        elif mode == 'test_no_gbd':
-            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, None, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, None, flowbased_dataset_rwlock, None))
+            BotnetDetection_threads.put(BotnetDetection(start_epoch, mode, fbd_n_estimators, GBD_classifier, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
+        elif mode == 'test_no_incremental_learning':
+            BotnetDetection_threads.put(BotnetDetection(start_epoch, mode, fbd_n_estimators, None, bpf, test_malicious_IPs_list, Packets.copy(), flowbased_dataset, None, flowbased_dataset_rwlock))
         else:
-            BotnetDetection_threads.put(BotnetDetection(mode, fbd_n_estimators, GBD_classifier, bpf, None, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
+            BotnetDetection_threads.put(BotnetDetection(None, mode, fbd_n_estimators, GBD_classifier, bpf, None, Packets.copy(), flowbased_dataset, IncrementalLearning_threads, flowbased_dataset_rwlock))
         Packets.drop(Packets.index, inplace=True)
 
 
@@ -221,7 +223,7 @@ if __name__ == '__main__':
     else:
         error = 1
 
-    if error == 0 and (mode == 'test' or mode == 'test_no_gbd'):
+    if error == 0 and (mode == 'test' or mode == 'test_no_incremental_learning'):
         if (len(sys.argv) == 10):
             interface = sys.argv[2]
             try:
@@ -396,7 +398,7 @@ if __name__ == '__main__':
         print("sudo python3 AntiBotnet.py <mode> <interface> <n_pkts> <n_rf_est_fbd> <n_rf_est_gbd> <P2P_IP>\n")
         sys.exit(-1)
 
-    if (mode == 'test' or mode == 'test_no_gbd'):
+    if (mode == 'test' or mode == 'test_no_incremental_learning'):
         with open(test_malicious_IPs_file) as malicious_IPs:
             test_malicious_IPs_list = malicious_IPs.read()
 

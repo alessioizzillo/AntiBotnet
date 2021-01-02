@@ -37,7 +37,7 @@ def updateFlows(Flows, Source, Source_Port, Destination, Destination_Port, Proto
     FPS = Length[0]
     TBT = sum(Length)
     APL = Average_payload_len(Protocol, UDP_Length, TCP_Payload_Length)
-    DPL = Num_different_packets_len(Length)
+    DPL = Num_different_packets(Length)
     PV = Stdv_payload(Length)
     if Duration != float(0):
         BPS = TBT*8/Duration # ???
@@ -63,12 +63,12 @@ def Stdv_payload(Length):
     return numpy.std(length_list)
 
 
-def Num_different_packets_len(Length):
+def Num_different_packets(Length):
     length_list = []
     for l in Length:
         if l not in length_list:
             length_list.append(l)
-    return len(length_list)
+    return len(length_list)/len(Length)
 
 
 def Average_payload_len(Protocol, UDP_Length, TCP_Payload_Length):
@@ -247,26 +247,7 @@ def FlowFeaturesExtractor(captured_packets, mode, malicious_IPs_list):
             UDP_Length.append(row['UDP Length'])
             TTL.append(row['TTL'])
             Forward.append(row['Forward'])
-            # if (row['Forward'] == 0):
-            #     updateFlows(Flows, row['Source'], row['Source Port'], row['Destination'], row['Destination Port'], row['Protocol'], Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list)       
-            #     Time.clear()
-            #     TCP_Flags.clear()
-            #     Length.clear()
-            #     TCP_Payload_Length.clear()
-            #     UDP_Length.clear()
-            #     TTL.clear()
-            #     Forward.clear()
         else:
-            # if not (prev['Protocol'] == 17 and prev['Forward'] == 0):
-            #     updateFlows(Flows, prev['Source'], prev['Source Port'], prev['Destination'], prev['Destination Port'], row['Protocol'], Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list)
-            #     Time.clear()
-            #     TCP_Flags.clear()
-            #     Length.clear()
-            #     TCP_Payload_Length.clear()
-            #     UDP_Length.clear()
-            #     TTL.clear()
-            #     Forward.clear()
-
             updateFlows(Flows, prev['Source'], prev['Source Port'], prev['Destination'], prev['Destination Port'], row['Protocol'], Time, TCP_Flags, Length, TCP_Payload_Length, UDP_Length, TTL, Forward, mode, malicious_IPs_list)
             Time.clear()
             TCP_Flags.clear()
@@ -317,7 +298,9 @@ if __name__ == '__main__':
         print("\nSaving extracted Flow Features")
         if not os.path.isdir("training_dataset"):
             os.makedirs("training_dataset")
-        flows.to_hdf('training_dataset/training.hdf5', key='flows', mode='w')
+            if not os.path.isdir("training_dataset/original"):
+                os.makedirs("training_dataset/original")
+        flows.to_hdf('training_dataset/original/training.hdf5', key='flows', mode='w')
     else:
         print("\nUSAGE: python3 flow_features_extractor.py <path of the csv dataset> <path of the file containing malicious IPs>\n")
         sys.exit(-1)

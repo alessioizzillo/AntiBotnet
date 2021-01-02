@@ -11,7 +11,6 @@ if os.path.dirname(os.path.dirname(os.path.abspath(__file__))) not in sys.path:
 from utilities.network import *
 
 IP2replace = None
-# n = 0
 
 
 def signal_handler(signalNumber, frame):
@@ -32,12 +31,12 @@ def replay_pkt(pkt):
 
     if IP2replace != None:
         if (pkt.haslayer(IP) and (pkt.haslayer(TCP) or pkt.haslayer(UDP)) and \
-            (pkt[IP].src == IP2replace or pkt[IP].dst == IP2replace)):
+            (pkt[IP].src in IP2replace or pkt[IP].dst in IP2replace)):
 
-            if pkt[IP].src == IP2replace:
+            if pkt[IP].src in IP2replace:
                 pkt[IP].src = host_IP
 
-            if pkt[IP].dst == IP2replace:
+            if pkt[IP].dst in IP2replace:
                 pkt[IP].dst = host_IP
 
             try:
@@ -58,8 +57,11 @@ def replay_pcap(pcapfile, IPs2replace_file, IP2replace_pos):
         IPs2replace_list.remove("")
     
     IP2replace = IPs2replace_list[IP2replace_pos]
+    IP2replace = IP2replace.split(",")
+    while ("" in IP2replace):
+        IP2replace.remove("")
 
-    print("IP to replace in the test file: "+IP2replace+" (pos: "+str(IP2replace_pos)+")")
+    print("IP to replace in the test file: "+str(IP2replace)+" (pos: "+str(IP2replace_pos)+")")
     print()
 
     sniff(offline=pcapfile, prn=replay_pkt, store=0)

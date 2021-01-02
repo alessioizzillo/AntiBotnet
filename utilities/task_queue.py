@@ -2,7 +2,8 @@ import threading
 from queue import Queue
 import ctypes
 from csv import writer
-from time import perf_counter, sleep
+from time import perf_counter, sleep, time
+
 
 
 class TaskQueue(threading.Thread):
@@ -35,10 +36,10 @@ class TaskQueue(threading.Thread):
                 self.current_thread.join()
                 end_time = perf_counter()
 
-                if (self.mode == 'test' or self.mode == 'test_no_gbd') and self.thread_name == 'BotnetDetection':     
+                if (self.mode == 'test' or self.mode == 'test_no_incremental_learning') and self.thread_name == 'BotnetDetection':     
                     with open("test_results.csv", 'a+', newline='') as write_obj:
                         csv_writer = writer(write_obj)
-                        csv_writer.writerow(["FBD", end_time-start_time, -1, \
+                        csv_writer.writerow([time()-self.current_thread.start_epoch, "FBD", end_time-start_time, -1, \
                             self.current_thread.fbd_exec_time, -1, self.current_thread.n_true_pos, \
                             self.current_thread.n_true_neg, self.current_thread.n_false_pos, \
                             self.current_thread.n_false_neg, self.current_thread.len_results])
@@ -46,7 +47,7 @@ class TaskQueue(threading.Thread):
                 elif self.mode == 'test' and self.thread_name == 'IncrementalLearning':
                     with open("test_results.csv", 'a+', newline='') as write_obj:
                         csv_writer = writer(write_obj)
-                        csv_writer.writerow(["GBD", -1, end_time-start_time, -1, \
+                        csv_writer.writerow([time()-self.current_thread.start_epoch, "GBD", -1, end_time-start_time, -1, \
                             self.current_thread.gbd_exec_time, self.current_thread.n_true_pos, \
                             self.current_thread.n_true_neg, self.current_thread.n_false_pos, \
                             self.current_thread.n_false_neg, self.current_thread.len_results])                    

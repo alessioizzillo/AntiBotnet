@@ -12,7 +12,8 @@ from graph_based_detection.graph_based_detection import GraphBasedDetection
 
 
 class IncrementalLearning(threading.Thread):
-    def __init__(self, mode, GBD_classifier, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, flowbased_dataset_rwlock):
+    def __init__(self, start_epoch, mode, GBD_classifier, bpf, test_malicious_IPs_list, captured_packets, flows, flowbased_dataset, flowbased_dataset_rwlock):
+        self.start_epoch = start_epoch
         self.mode = mode
         self.bpf = bpf
         self.captured_packets = captured_packets

@@ -1,9 +1,11 @@
-# Master-Thesis-Project
+# AntiBotnet
+
+A Linux tool for detecting and mitigating Botnet attacks.
 
 **Instructions**:
-1) Create the dataset for "flow-based detection system"
-2) Create the dataset for "graph-based detection system"
-3) Run "AntiBotnet.py" or "AntiBotnet_1.py"
+1) Create the dataset for the "flow-based detection system".
+2) Create the dataset for the "graph-based detection system".
+3) Run "AntiBotnet.py" python script.
 
 
 **Creation of flow-based detection system**

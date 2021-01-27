@@ -111,9 +111,6 @@ def AntiBotnet(mode, interface, n_packets, fbd_n_estimators, gbd_n_estimators, t
     p2p_process = Process(target=Start_P2P, args=(bpf, target_P2P_IP, ))
     p2p_process.start()
 
-    local_ip = bpf['local_ip']
-    local_ip.push(ctypes.c_uint(ip2int(socket.gethostbyname(socket.gethostname()))), flags=QueueStack.BPF_EXIST)
-
     # Load eBPF program ebpf_program of type SOCKET_FILTER into the kernel eBPF vm.
     function_ebpf_program = bpf.load_func("ebpf_program", BPF.SOCKET_FILTER)
 
